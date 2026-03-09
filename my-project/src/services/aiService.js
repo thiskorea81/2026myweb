@@ -1,33 +1,43 @@
 import { GoogleGenAI } from "@google/genai";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
-// 💡 전역 변수로 선언하되 초기화는 하지 않습니다.
-let genAI = null;
+// 💡 전역 변수 선언
+let aiClient = null;
 const MODEL_NAME = "gemini-3-flash-preview"; 
 
 /**
- * API 키를 확인하고 인스턴스를 반환하는 내부 함수
+ * 💡 최신 용법에 맞게 AI 클라이언트를 생성하는 함수
  */
-const getGenAI = () => {
-  if (!genAI) {
+const getAiClient = () => {
+  if (!aiClient) {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    
     if (!apiKey) {
-      throw new Error("VITE_GEMINI_API_KEY is not defined in .env file");
+      const errorMsg = "🚨 [에러] .env 파일에 VITE_GEMINI_API_KEY가 없습니다. 서버를 재시작하세요.";
+      alert(errorMsg);
+      throw new Error(errorMsg);
     }
-    genAI = new GoogleGenAI(apiKey);
+
+    // 최신 용법: API 키를 객체에 담아 전달
+    aiClient = new GoogleGenAI({ apiKey });
   }
-  return genAI;
+  return aiClient;
 };
 
 export const aiService = {
   /**
-   * 1. 일반 텍스트 응답
+   * 1. 일반 텍스트 응답 (최신 용법 적용)
    */
   async askText(prompt) {
     try {
-      const model = getGenAI().getGenerativeModel({ model: MODEL_NAME });
-      const result = await model.generateContent(prompt);
-      return result.response.text();
+      const ai = getAiClient();
+      // 💡 최신 방식: ai.models.generateContent 사용
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: prompt,
+      });
+      
+      return response.text;
     } catch (error) {
       console.error("AI 텍스트 요청 실패:", error);
       throw error;
@@ -35,23 +45,23 @@ export const aiService = {
   },
 
   /**
-   * 2. 구조화된 데이터 응답 (최신 방식)
+   * 2. 구조화된 데이터 응답 (최신 용법 + JSON 스키마)
    */
   async askStructured(prompt, schema) {
     try {
-      const model = getGenAI().getGenerativeModel({ 
+      const ai = getAiClient();
+      // 💡 최신 방식의 구조화된 데이터 요청
+      const response = await ai.models.generateContent({
         model: MODEL_NAME,
-        generationConfig: {
+        contents: prompt,
+        config: {
           responseMimeType: "application/json",
           responseJsonSchema: zodToJsonSchema(schema),
-        }
+        },
       });
 
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      
-      // JSON 파싱 전 AI 응답 확인 및 Zod 검증
-      return schema.parse(JSON.parse(text));
+      // Zod 파싱 및 검증
+      return schema.parse(JSON.parse(response.text));
     } catch (error) {
       console.error("AI 구조화 데이터 요청 실패:", error);
       throw error;
