@@ -74,7 +74,14 @@ const handleBulkRecordAi = async () => {
 
       const cSnap = await getDocs(query(collection(db, 'counselingLogs'), where('studentId', '==', id)))
       
-      const prompt = `학생 ${student.name}의 생기부를 작성해줘. 
+      const prompt = `
+      당신은 대한민국 고등학교 담임 교사 비서입니다. 
+      제공된 학생 정보를 바탕으로 학교생활기록부 초안을 작성하세요.
+      [출력 형식 가이드]
+      반드시 제공된 JSON 스키마를 엄격히 준수하여 autonomous, career, behavior 세 개의 키값에 내용을 채워주세요.
+
+      [학생 정보]
+      이름: ${student.name}
       진로:${student.career}, 상담:${cSnap.docs.map(d=>d.data().content).join(', ')}
       메모:${student.obsAutonomous || ''} / ${student.obsCareer || ''} / ${student.obsBehavior || ''}
       [규칙] 1500바이트 이하. 책 제목 앞 어포스트로피 금지.`
