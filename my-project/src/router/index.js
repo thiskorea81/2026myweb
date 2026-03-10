@@ -32,8 +32,15 @@ const router = createRouter({
       path: '/admin', 
       name: 'Admin', 
       component: () => import('../views/AdminView.vue'), 
-      meta: { requiresAuth: true } 
-    }
+      
+    },
+    // 💡 새롭게 추가된 조종례 게시판 라우트
+    {
+      path: '/board-admin',
+      name: 'BoardAdmin',
+      component: () => import('../views/BoardAdmin.vue'),
+      meta: { requiresAuth: true }
+    },
   ]
 })
 
