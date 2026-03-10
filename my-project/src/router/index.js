@@ -20,23 +20,36 @@ const router = createRouter({
       path: '/guide',
       name: 'Guide',
       component: () => import('../views/Guide.vue')
-    } 
+    },
+    // 💡 새롭게 추가된 자율학습 신청 페이지 (학생용, 로그인 불필요)
+    { 
+      path: '/apply', 
+      name: 'Apply', 
+      component: () => import('../views/ApplyView.vue') 
+    },
+    // 💡 새롭게 추가된 자율학습 관리자 페이지 (교사용, 로그인 필수)
+    { 
+      path: '/admin', 
+      name: 'Admin', 
+      component: () => import('../views/AdminView.vue'), 
+      meta: { requiresAuth: true } 
+    }
   ]
 })
 
 /**
- * 💡 네비게이션 가이드 최신화 (Deprecated 경고 해결)
+ * 💡 네비게이션 가이드 (Navigation Guard)
  */
 router.beforeEach((to) => {
   const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
   
-  // 인증이 필요한 페이지인데 로그인이 안 되어 있다면
+  // 인증이 필요한 페이지(requiresAuth: true)인데 로그인이 안 되어 있다면
   if (to.meta.requiresAuth && !isLoggedIn) {
-    // next('/login') 대신 목적지 주소를 return 합니다.
+    // 목적지 주소를 로그인 페이지로 강제 변경합니다.
     return '/login'
   }
   
-  // 조건에 걸리지 않으면 아무것도 반환하지 않거나(undefined) true를 반환하여 통과시킵니다.
+  // 조건에 걸리지 않으면 통과시킵니다.
   return true
 })
 
