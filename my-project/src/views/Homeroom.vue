@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useStudentStore } from '../stores/studentStore'
 import { useAiNoteStore } from '../stores/aiNoteStore'
 import { storeToRefs } from 'pinia'
@@ -19,13 +19,31 @@ const studentStore = useStudentStore()
 const aiNoteStore = useAiNoteStore()
 const { students } = storeToRefs(studentStore)
 
+// 💡 [추가] 학급 선택 상태 (로컬 스토리지에서 불러오기)
+const myGrade = ref(localStorage.getItem('myGrade') || '1')
+const myClass = ref(localStorage.getItem('myClass') || '1')
+
+// 💡 [추가] 학급 변경 시 로컬 스토리지 저장 및 선택 초기화
+watch([myGrade, myClass], ([newGrade, newClass]) => {
+  localStorage.setItem('myGrade', newGrade)
+  localStorage.setItem('myClass', newClass)
+  selectedIds.value = [] // 반이 바뀌면 선택된 체크박스 초기화
+})
+
+// 💡 [추가] 우리 반 학생만 필터링하는 computed
+const filteredStudents = computed(() => {
+  return students.value.filter(s => 
+    String(s.grade) === String(myGrade.value) && 
+    String(s.class) === String(myClass.value)
+  )
+})
+
 onMounted(() => { studentStore.fetchStudents() })
 
 const selectedIds = ref([])
 const isAiAnalyzing = ref(false)
 const aiProgress = ref({ current: 0, total: 0, type: '' })
 
-// 💡 인쇄 관련 상태 변수
 const isPrinting = ref(false)
 const printDataList = ref([])
 
@@ -80,7 +98,7 @@ const handleBulkRecordAi = async () => {
   }
 }
 
-// 💡 일괄 인쇄 로직 (복구됨)
+// 일괄 인쇄 로직
 const handleBulkPrint = async () => {
   if (selectedIds.value.length === 0) return
   isPrinting.value = true
@@ -103,10 +121,8 @@ const handleBulkPrint = async () => {
       })
     }
     
-    // 데이터를 인쇄 컴포넌트로 넘김
     printDataList.value = dataList
     
-    // 렌더링될 시간을 잠시 준 후 인쇄 창 띄우기
     setTimeout(() => { 
       window.print(); 
       isPrinting.value = false;
@@ -118,7 +134,6 @@ const handleBulkPrint = async () => {
   }
 }
 
-// 기타 관리 기능
 const showUploadArea = ref(false)
 const showGradeUploadArea = ref(false)
 const showPhotoUploadArea = ref(false)
@@ -132,33 +147,46 @@ const closeModal = () => { isModalOpen.value = false; selectedStudent.value = nu
 <template>
   <div class="w-full relative">
     
-    <div v-if="isAiAnalyzing" class="fixed inset-0 bg-black/60 z- flex flex-col items-center justify-center text-white p-4">
+    <div v-if="isAiAnalyzing" class="fixed inset-0 bg-black/60 z-50 flex flex-col items-center justify-center text-white p-4">
       <div class="animate-spin w-16 h-16 border-4 border-white border-t-blue-500 rounded-full mb-6"></div>
       <h3 class="text-2xl font-bold mb-2">🤖 AI {{ aiProgress.type }} 진행 중...</h3>
       <p class="text-lg text-blue-200 font-bold">{{ aiProgress.current }} / {{ aiProgress.total }} 명 완료</p>
     </div>
 
     <div class="print:hidden">
-      <div class="flex justify-between items-center mb-6">
-        <h2 class="text-2xl font-black text-gray-800 tracking-tight">👥 학급 학생 관리</h2>
-        <div class="flex gap-2">
-          <button @click="showPhotoUploadArea = !showPhotoUploadArea" class="text-sm px-3 py-2 bg-gray-200 rounded-lg font-medium">📸 사진 등록</button>
-          <button @click="showGradeUploadArea = !showGradeUploadArea" class="text-sm px-3 py-2 bg-gray-200 rounded-lg font-medium">💯 성적 등록</button>
-          <button @click="showUploadArea = !showUploadArea" class="text-sm px-4 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-sm">학생 등록</button>
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div class="flex flex-col gap-1">
+          <h2 class="text-2xl font-black text-gray-800 tracking-tight">👥 학급 학생 관리</h2>
+          <div class="flex items-center gap-2 mt-1">
+            <div class="flex bg-indigo-50 border border-indigo-100 rounded-lg p-1">
+              <select v-model="myGrade" class="bg-transparent text-sm font-bold text-indigo-800 outline-none px-2 py-1">
+                <option value="1">1학년</option>
+                <option value="2">2학년</option>
+                <option value="3">3학년</option>
+              </select>
+              <select v-model="myClass" class="bg-transparent text-sm font-bold text-indigo-800 outline-none px-2 py-1 border-l border-indigo-200">
+                <option v-for="c in 15" :key="c" :value="String(c)">{{ c }}반</option>
+              </select>
+            </div>
+            <span class="text-xs font-bold text-gray-400 ml-1">우리 반을 설정하면 해당 학생들만 표시됩니다.</span>
+          </div>
+        </div>
+
+        <div class="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+          <button @click="showPhotoUploadArea = !showPhotoUploadArea" class="text-xs md:text-sm px-3 py-2 bg-gray-200 rounded-lg font-medium whitespace-nowrap">📸 사진 등록</button>
+          <button @click="showGradeUploadArea = !showGradeUploadArea" class="text-xs md:text-sm px-3 py-2 bg-gray-200 rounded-lg font-medium whitespace-nowrap">💯 성적 등록</button>
+          <button @click="showUploadArea = !showUploadArea" class="text-xs md:text-sm px-4 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-sm whitespace-nowrap">학생 등록</button>
         </div>
       </div>
 
       <div v-if="selectedIds.length > 0" class="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6 flex gap-3 items-center shadow-sm sticky top-0 z-20">
         <span class="text-sm font-bold text-blue-800 pr-4 border-r border-blue-200">{{ selectedIds.length }}명 선택</span>
-        
-        <button @click="handleBulkPrint" :disabled="isPrinting" class="text-sm px-4 py-2 bg-gray-800 text-white rounded-lg font-bold shadow-sm hover:bg-black transition-colors">
-          🖨️ {{ isPrinting ? '인쇄 준비 중...' : '일괄 인쇄' }}
+        <button @click="handleBulkPrint" :disabled="isPrinting" class="text-xs md:text-sm px-4 py-2 bg-gray-800 text-white rounded-lg font-bold shadow-sm hover:bg-black transition-colors">
+          🖨️ {{ isPrinting ? '준비 중...' : '일괄 인쇄' }}
         </button>
-        
-        <button @click="handleBulkRecordAi" class="text-sm px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg font-bold shadow-sm transition-transform active:scale-95">
-          📝 AI 생기부 초안 일괄 생성
+        <button @click="handleBulkRecordAi" class="text-xs md:text-sm px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg font-bold shadow-sm active:scale-95">
+          📝 AI 생기부 초안 생성
         </button>
-        
         <div class="flex-1"></div>
         <button @click="selectedIds = []" class="text-xs font-bold text-gray-500 hover:underline">선택 해제</button>
       </div>
@@ -166,11 +194,16 @@ const closeModal = () => { isModalOpen.value = false; selectedStudent.value = nu
       <PhotoBulkUpload v-if="showPhotoUploadArea" />
       <GradeBulkUpload v-if="showGradeUploadArea" />
       <StudentBulkUpload v-if="showUploadArea" />
-      <StudentListTable :students="students" v-model="selectedIds" @open-modal="openModal" />
+      
+      <StudentListTable :students="filteredStudents" v-model="selectedIds" @open-modal="openModal" />
+      
+      <div v-if="filteredStudents.length === 0" class="text-center py-20 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 mt-4">
+        <p class="text-gray-500 font-bold">{{ myGrade }}학년 {{ myClass }}반에 등록된 학생이 없습니다.</p>
+        <p class="text-sm text-gray-400 mt-1">학년/반 설정을 확인하거나 학생을 등록해 주세요.</p>
+      </div>
     </div>
 
     <StudentDetailModal v-if="isModalOpen" :student="selectedStudent" @close="closeModal" />
-    
     <StudentPrintLayout :printDataList="printDataList" />
     
   </div>
