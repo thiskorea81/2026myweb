@@ -36,7 +36,7 @@ const handleLogin = () => {
             v-model="id" 
             type="text" 
             placeholder="아이디를 입력하세요" 
-            class="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors bg-white text-gray-900 placeholder-gray-400 font-medium"
+            class="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 placeholder-gray-400 font-medium"
           />
         </div>
 
@@ -47,7 +47,7 @@ const handleLogin = () => {
             v-model="pw" 
             type="password" 
             placeholder="비밀번호를 입력하세요" 
-            class="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors bg-white text-gray-900 placeholder-gray-400 font-medium"
+            class="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 placeholder-gray-400 font-medium"
             @keyup.enter="handleLogin" 
           />
         </div>
