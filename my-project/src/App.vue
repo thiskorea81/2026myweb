@@ -1,21 +1,27 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
 
-// 로그인 여부 확인
-const isLoggedIn = computed(() => localStorage.getItem('isLoggedIn') === 'true')
+// 💡 [핵심 수정 1] computed 대신 ref를 사용합니다.
+const isLoggedIn = ref(localStorage.getItem('isLoggedIn') === 'true')
+
+// 💡 [핵심 수정 2] 주소(라우트)가 바뀔 때마다 로그인 상태를 다시 확인합니다.
+watch(() => route.path, () => {
+  isLoggedIn.value = localStorage.getItem('isLoggedIn') === 'true'
+})
 
 const handleLogout = () => {
   if(confirm('로그아웃 하시겠습니까?')) {
     localStorage.removeItem('isLoggedIn')
+    isLoggedIn.value = false // 로그아웃 시 즉각 반영
     router.push('/login')
   }
 }
 
-// 💡 메뉴 리스트 (경로, 아이콘, 메뉴명)
+// 메뉴 리스트
 const navMenus = [
   { path: '/', icon: '🏠', name: '홈' },
   { path: '/homeroom', icon: '👥', name: '학급관리' },
@@ -74,7 +80,6 @@ const navMenus = [
 </template>
 
 <style>
-/* 전체 기본 폰트 설정 */
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;700;900&display=swap');
 body {
   font-family: 'Pretendard', -apple-system, sans-serif;
@@ -82,7 +87,6 @@ body {
   padding: 0;
 }
 
-/* 💡 메뉴 가로 스크롤바 숨기기 (모바일/작은 모니터용) */
 .custom-scrollbar::-webkit-scrollbar {
   display: none;
 }
