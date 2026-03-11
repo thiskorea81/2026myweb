@@ -5,10 +5,10 @@ import { useRouter, useRoute } from 'vue-router'
 const router = useRouter()
 const route = useRoute()
 
-// 💡 [핵심 수정 1] computed 대신 ref를 사용합니다.
+// 💡 computed 대신 ref를 사용합니다.
 const isLoggedIn = ref(localStorage.getItem('isLoggedIn') === 'true')
 
-// 💡 [핵심 수정 2] 주소(라우트)가 바뀔 때마다 로그인 상태를 다시 확인합니다.
+// 💡 주소(라우트)가 바뀔 때마다 로그인 상태를 다시 확인합니다.
 watch(() => route.path, () => {
   isLoggedIn.value = localStorage.getItem('isLoggedIn') === 'true'
 })
@@ -21,12 +21,13 @@ const handleLogout = () => {
   }
 }
 
-// 메뉴 리스트
+// 💡 메뉴 리스트 (자리배치 제거)
 const navMenus = [
   { path: '/', icon: '🏠', name: '홈' },
+  { path: '/all-students', icon: '🏫', name: '전체 학생' },
   { path: '/homeroom', icon: '👥', name: '학급관리' },
+  { path: '/subject', icon: '📝', name: '교과수업' },
   { path: '/club', icon: '🎨', name: '동아리' },
-  { path: '/seats', icon: '🪑', name: '자리배치' },
   { path: '/worklog', icon: '📓', name: '업무일지' },
   { path: '/board-admin', icon: '📋', name: '조종례 관리' },
   { path: '/admin', icon: '📊', name: '자율학습 관리' },
@@ -61,6 +62,11 @@ const navMenus = [
             <router-link to="/board" target="_blank" class="hidden md:inline-flex px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors whitespace-nowrap" title="새 창으로 조종례 보드 열기">
               📢 조종례 화면
             </router-link>
+            
+            <router-link to="/seats" class="hidden md:inline-flex px-2.5 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold hover:bg-amber-100 transition-colors whitespace-nowrap" title="학생 자리배치 관리">
+              🪑 자리배치
+            </router-link>
+
             <router-link to="/apply" target="_blank" class="hidden md:inline-flex px-2.5 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition-colors whitespace-nowrap" title="학생용 신청 페이지 주소 복사용">
               📝 자율학습 신청폼
             </router-link>
