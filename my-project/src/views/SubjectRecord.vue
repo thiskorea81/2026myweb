@@ -17,7 +17,6 @@ const selectedStudent = ref(null)
 const enrolledIds = ref([])
 const isEditingRoster = ref(false)
 
-// 💡 학번 일괄 추가용 상태
 const bulkStudentIds = ref('')
 
 onMounted(async () => {
@@ -63,44 +62,53 @@ const fetchRoster = async () => {
   } catch (error) { console.error("명단 로드 에러:", error) }
 }
 
-const saveRoster = async () => {
+// 💡 저장 시 알림창을 끌 수 있도록 개선 (개별 제외 시 조용히 저장하기 위함)
+const saveRoster = async (silent = false) => {
   try {
     await setDoc(doc(db, 'subjectRosters', selectedSubject.value), { studentIds: enrolledIds.value })
     isEditingRoster.value = false
-    alert('저장되었습니다.')
-  } catch (error) { alert('오류가 발생했습니다.') }
+    if (!silent) alert('저장되었습니다.')
+  } catch (error) { 
+    if (!silent) alert('오류가 발생했습니다.') 
+  }
 }
 
-// 💡 학번으로 일괄 추가하는 스마트 로직
+// 💡 1. 명단에서 즉시 제외하는 기능 추가
+const removeStudentFromRoster = async (student) => {
+  if (!confirm(`${student.name} 학생을 수강 명단에서 제외하시겠습니까?`)) return
+  
+  // 배열에서 해당 학생 학번 쏙 빼기
+  enrolledIds.value = enrolledIds.value.filter(id => id !== student.studentId)
+  
+  // 만약 지금 선택해서 보고 있던 학생이면 선택 해제
+  if (selectedStudent.value?.studentId === student.studentId) {
+    selectedStudent.value = null
+  }
+  
+  // 조용히 데이터베이스에 갱신 저장
+  await saveRoster(true)
+}
+
 const addStudentsByIds = () => {
   if (!bulkStudentIds.value.trim()) return alert('추가할 학번을 입력해주세요.')
-  
-  // 띄어쓰기, 쉼표, 줄바꿈 등으로 텍스트를 분리
   const idsToAdd = bulkStudentIds.value.split(/[\s,]+/).map(id => id.trim()).filter(id => id !== '')
   
   let addedCount = 0
   let notFoundIds = []
 
   idsToAdd.forEach(id => {
-    // 전체 학생 DB에 존재하는 학번인지 검증
     const exists = students.value.some(s => s.studentId === id)
     if (exists) {
       if (!enrolledIds.value.includes(id)) {
-        enrolledIds.value.push(id) // 명단에 추가
+        enrolledIds.value.push(id)
         addedCount++
       }
-    } else {
-      notFoundIds.push(id) // DB에 없는 학번
-    }
+    } else notFoundIds.push(id)
   })
 
-  bulkStudentIds.value = '' // 입력창 초기화
-  
-  if (notFoundIds.length > 0) {
-    alert(`✅ ${addedCount}명 추가 완료.\n⚠️ 다음 학번은 DB에서 찾을 수 없어 제외되었습니다: ${notFoundIds.join(', ')}`)
-  } else {
-    alert(`✅ ${addedCount}명의 학생이 수강 명단에 추가되었습니다!`)
-  }
+  bulkStudentIds.value = '' 
+  if (notFoundIds.length > 0) alert(`✅ ${addedCount}명 추가 완료.\n⚠️ 다음 학번은 DB에서 찾을 수 없어 제외되었습니다: ${notFoundIds.join(', ')}`)
+  else alert(`✅ ${addedCount}명의 학생이 추가되었습니다!`)
 }
 
 const filteredAllStudents = computed(() => students.value.filter(s => (filterGrade.value === '전체' || String(s.grade) === filterGrade.value) && (filterClass.value === '전체' || String(s.class) === filterClass.value)))
@@ -151,10 +159,10 @@ const selectStudent = (student) => { if (!isEditingRoster.value) selectedStudent
         <div class="p-4 border-b border-gray-200 bg-gray-50 flex flex-col gap-3 shrink-0">
           <div class="flex justify-between items-center">
             <h3 class="font-black text-gray-900 text-lg">{{ isEditingRoster ? '✏️ 수강생 선택' : '📚 수강생 명단' }}</h3>
-            <button v-if="!isEditingRoster && selectedSubject" @click="isEditingRoster = true" class="px-3 py-1.5 bg-blue-100 text-blue-800 font-bold rounded-lg text-xs">➕ 명단 편집</button>
+            <button v-if="!isEditingRoster && selectedSubject" @click="isEditingRoster = true" class="px-3 py-1.5 bg-blue-100 text-blue-800 font-bold rounded-lg text-xs hover:bg-blue-200 transition-colors">➕ 명단 편집</button>
             <div v-if="isEditingRoster" class="flex gap-2">
               <button @click="isEditingRoster = false; fetchRoster()" class="px-3 py-1.5 bg-gray-200 text-gray-800 font-bold rounded-lg text-xs">취소</button>
-              <button @click="saveRoster" class="px-3 py-1.5 bg-blue-600 text-white font-bold rounded-lg text-xs shadow-sm">💾 명단 확정</button>
+              <button @click="saveRoster()" class="px-3 py-1.5 bg-blue-600 text-white font-bold rounded-lg text-xs shadow-sm">💾 명단 확정</button>
             </div>
           </div>
 
@@ -173,10 +181,26 @@ const selectStudent = (student) => { if (!isEditingRoster.value) selectedStudent
             <div v-if="!selectedSubject" class="text-center py-10 text-gray-500 font-medium text-sm">과목을 선택해주세요.</div>
             <div v-else-if="filteredEnrolledStudents.length === 0" class="text-center py-10 text-gray-500 font-medium text-sm">등록된 수강생이 없습니다.<br>[명단 편집]을 눌러 학생을 추가해주세요.</div>
             
-            <button v-for="student in filteredEnrolledStudents" :key="student.id" @click="selectStudent(student)" class="w-full text-left p-3 mb-1 rounded-xl transition-colors flex justify-between items-center border" :class="selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300 shadow-sm' : 'border-transparent hover:bg-gray-100'">
-              <span class="font-bold text-sm" :class="selectedStudent?.id === student.id ? 'text-blue-800' : 'text-gray-800'">{{ student.grade }}학년 {{ student.class }}반 {{ student.number }}번</span>
-              <span class="font-black" :class="selectedStudent?.id === student.id ? 'text-blue-900' : 'text-gray-900'">{{ student.name }}</span>
-            </button>
+            <div 
+              v-for="student in filteredEnrolledStudents" 
+              :key="student.id" 
+              @click="selectStudent(student)" 
+              class="w-full text-left p-3 mb-1 rounded-xl transition-colors flex justify-between items-center border group cursor-pointer" 
+              :class="selectedStudent?.id === student.id ? 'bg-blue-50 border-blue-300 shadow-sm' : 'border-transparent hover:bg-gray-100'"
+            >
+              <div>
+                <span class="font-bold text-sm mr-2" :class="selectedStudent?.id === student.id ? 'text-blue-800' : 'text-gray-800'">{{ student.grade }}학년 {{ student.class }}반 {{ student.number }}번</span>
+                <span class="font-black" :class="selectedStudent?.id === student.id ? 'text-blue-900' : 'text-gray-900'">{{ student.name }}</span>
+              </div>
+              
+              <button 
+                @click.stop="removeStudentFromRoster(student)" 
+                class="text-xs px-2 py-1 bg-red-100 text-red-600 font-bold rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-200"
+                title="명단에서 이 학생을 제외합니다"
+              >
+                제외
+              </button>
+            </div>
           </template>
 
           <template v-else>
