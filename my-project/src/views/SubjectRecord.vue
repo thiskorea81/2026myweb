@@ -17,6 +17,9 @@ const selectedStudent = ref(null)
 const enrolledIds = ref([])
 const isEditingRoster = ref(false)
 
+// 💡 학번 일괄 추가용 상태
+const bulkStudentIds = ref('')
+
 onMounted(async () => {
   const savedSubjects = JSON.parse(localStorage.getItem('mySubjects') || '[]')
   if (savedSubjects.length === 0) {
@@ -64,14 +67,43 @@ const saveRoster = async () => {
   try {
     await setDoc(doc(db, 'subjectRosters', selectedSubject.value), { studentIds: enrolledIds.value })
     isEditingRoster.value = false
-    alert('수강생 명단이 저장되었습니다.')
+    alert('저장되었습니다.')
   } catch (error) { alert('오류가 발생했습니다.') }
 }
 
-// 💡 전체 학생 명단 (명단 편집 시 사용)
-const filteredAllStudents = computed(() => students.value.filter(s => (filterGrade.value === '전체' || String(s.grade) === filterGrade.value) && (filterClass.value === '전체' || String(s.class) === filterClass.value)))
+// 💡 학번으로 일괄 추가하는 스마트 로직
+const addStudentsByIds = () => {
+  if (!bulkStudentIds.value.trim()) return alert('추가할 학번을 입력해주세요.')
+  
+  // 띄어쓰기, 쉼표, 줄바꿈 등으로 텍스트를 분리
+  const idsToAdd = bulkStudentIds.value.split(/[\s,]+/).map(id => id.trim()).filter(id => id !== '')
+  
+  let addedCount = 0
+  let notFoundIds = []
 
-// 💡 과목 수강생 명단 (보기 모드 시 사용)
+  idsToAdd.forEach(id => {
+    // 전체 학생 DB에 존재하는 학번인지 검증
+    const exists = students.value.some(s => s.studentId === id)
+    if (exists) {
+      if (!enrolledIds.value.includes(id)) {
+        enrolledIds.value.push(id) // 명단에 추가
+        addedCount++
+      }
+    } else {
+      notFoundIds.push(id) // DB에 없는 학번
+    }
+  })
+
+  bulkStudentIds.value = '' // 입력창 초기화
+  
+  if (notFoundIds.length > 0) {
+    alert(`✅ ${addedCount}명 추가 완료.\n⚠️ 다음 학번은 DB에서 찾을 수 없어 제외되었습니다: ${notFoundIds.join(', ')}`)
+  } else {
+    alert(`✅ ${addedCount}명의 학생이 수강 명단에 추가되었습니다!`)
+  }
+}
+
+const filteredAllStudents = computed(() => students.value.filter(s => (filterGrade.value === '전체' || String(s.grade) === filterGrade.value) && (filterClass.value === '전체' || String(s.class) === filterClass.value)))
 const enrolledStudents = computed(() => students.value.filter(s => enrolledIds.value.includes(s.studentId)))
 const filteredEnrolledStudents = computed(() => enrolledStudents.value.filter(s => (filterGrade.value === '전체' || String(s.grade) === filterGrade.value) && (filterClass.value === '전체' || String(s.class) === filterClass.value)))
 
@@ -122,11 +154,11 @@ const selectStudent = (student) => { if (!isEditingRoster.value) selectedStudent
             <button v-if="!isEditingRoster && selectedSubject" @click="isEditingRoster = true" class="px-3 py-1.5 bg-blue-100 text-blue-800 font-bold rounded-lg text-xs">➕ 명단 편집</button>
             <div v-if="isEditingRoster" class="flex gap-2">
               <button @click="isEditingRoster = false; fetchRoster()" class="px-3 py-1.5 bg-gray-200 text-gray-800 font-bold rounded-lg text-xs">취소</button>
-              <button @click="saveRoster" class="px-3 py-1.5 bg-blue-600 text-white font-bold rounded-lg text-xs">💾 저장</button>
+              <button @click="saveRoster" class="px-3 py-1.5 bg-blue-600 text-white font-bold rounded-lg text-xs shadow-sm">💾 명단 확정</button>
             </div>
           </div>
 
-          <div class="flex gap-2">
+          <div v-if="!isEditingRoster" class="flex gap-2">
             <select v-model="filterGrade" class="w-1/2 p-2 border border-gray-300 rounded-lg outline-none font-bold text-gray-900 bg-white text-sm">
               <option value="전체">학년 전체</option><option value="1">1학년</option><option value="2">2학년</option><option value="3">3학년</option>
             </select>
@@ -148,9 +180,27 @@ const selectStudent = (student) => { if (!isEditingRoster.value) selectedStudent
           </template>
 
           <template v-else>
+            <div class="mb-4 p-3 bg-indigo-50 rounded-xl border border-indigo-200">
+              <p class="text-xs font-bold text-indigo-800 mb-2">📌 엑셀 학번 일괄 추가 (띄어쓰기, 쉼표, 줄바꿈 허용)</p>
+              <div class="flex gap-2">
+                <textarea v-model="bulkStudentIds" rows="2" class="flex-1 p-2 border border-indigo-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none bg-white text-gray-900" placeholder="예: 10501, 10502 10503"></textarea>
+                <button @click="addStudentsByIds" class="px-3 py-2 bg-indigo-600 text-white font-bold rounded-lg text-sm hover:bg-indigo-700 whitespace-nowrap shadow-sm">추가</button>
+              </div>
+            </div>
+
+            <div class="flex gap-2 mb-2">
+              <select v-model="filterGrade" class="w-1/2 p-2 border border-gray-300 rounded-lg outline-none font-bold text-gray-900 bg-white text-sm">
+                <option value="전체">학년 전체</option><option value="1">1학년</option><option value="2">2학년</option><option value="3">3학년</option>
+              </select>
+              <select v-model="filterClass" class="w-1/2 p-2 border border-gray-300 rounded-lg outline-none font-bold text-gray-900 bg-white text-sm">
+                <option value="전체">반 전체</option><option v-for="c in 15" :key="c" :value="String(c)">{{ c }}반</option>
+              </select>
+            </div>
+            
             <div class="mb-2 p-2 bg-blue-50 rounded-lg flex items-center gap-2 border border-blue-100">
               <input type="checkbox" @change="toggleSelectAllFiltered" class="w-4 h-4 accent-blue-600 cursor-pointer"><span class="text-sm font-bold text-blue-900">조회된 학생 전체 선택</span>
             </div>
+            
             <label v-for="student in filteredAllStudents" :key="'edit'+student.id" class="w-full flex items-center p-3 mb-1 rounded-xl transition-colors hover:bg-gray-50 border border-transparent cursor-pointer">
               <input type="checkbox" :value="student.studentId" v-model="enrolledIds" class="w-4 h-4 accent-blue-600 mr-3">
               <span class="font-bold text-sm text-gray-800 flex-1">{{ student.grade }}학년 {{ student.class }}반 {{ student.number }}번</span>
