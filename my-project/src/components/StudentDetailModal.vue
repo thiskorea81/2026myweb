@@ -12,7 +12,7 @@ import StudentAttendanceTab from './StudentAttendanceTab.vue'
 import StudentGradeTab from './StudentGradeTab.vue'
 import StudentAiNoteTab from './StudentAiNoteTab.vue'
 import StudentRecordTab from './StudentRecordTab.vue'
-import StudentPrintLayout from './StudentPrintLayout.vue' // 💡 분리된 인쇄 레이아웃
+import StudentPrintLayout from './StudentPrintLayout.vue'
 
 const props = defineProps({
   student: { type: Object, required: true }
@@ -36,9 +36,10 @@ watch(() => props.student, (newVal) => {
   }
 }, { immediate: true })
 
-const handlePrint = () => window.print()
+const handlePrint = () => {
+  window.print()
+}
 
-// 💡 단일 학생 인쇄를 위해 배열 형태로 감싸서 넘겨줌
 const singlePrintData = computed(() => [{
   student: props.student,
   counselingLogs: counselingLogs.value,
@@ -48,10 +49,11 @@ const singlePrintData = computed(() => [{
 </script>
 
 <template>
-  <div class="modal-overlay fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+  <div class="modal-overlay fixed inset-0 bg-black/40 print:bg-transparent flex items-center justify-center z-50 p-4 print:p-0 print:static print:h-auto">
     
-    <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
-      <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+    <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden print:hidden">
+      
+      <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center shrink-0">
         <div class="flex items-center gap-3">
           <img v-if="student.photoUrl" :src="student.photoUrl" class="w-10 h-10 rounded-full object-cover border border-gray-300 shadow-sm">
           <div v-else class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-lg shadow-sm">👤</div>
@@ -72,7 +74,7 @@ const singlePrintData = computed(() => [{
         <button @click="activeTab = 'record'" class="px-5 py-2.5 font-bold text-sm rounded-t-lg transition-colors" :class="activeTab === 'record' ? 'bg-teal-50 border-t border-l border-r border-teal-200 text-teal-800' : 'text-gray-500 hover:bg-gray-100'">📝 생기부</button>
       </div>
 
-      <div class="p-6 overflow-y-auto flex-1 bg-white custom-scrollbar">
+      <div class="p-6 overflow-y-auto flex-1 bg-white custom-scrollbar relative">
         <StudentInfoTab v-if="activeTab === 'info'" :student="student" @close="$emit('close')" />
         <StudentCounselTab v-if="activeTab === 'counsel'" :student="student" />
         <StudentAttendanceTab v-if="activeTab === 'attendance'" :student="student" />
@@ -82,7 +84,7 @@ const singlePrintData = computed(() => [{
       </div>
     </div>
 
-    <StudentPrintLayout :printDataList="singlePrintData" />
+    <StudentPrintLayout :printDataList="singlePrintData" class="print:block hidden" />
     
   </div>
 </template>

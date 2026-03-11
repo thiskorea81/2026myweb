@@ -28,9 +28,9 @@ const navMenus = [
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 flex flex-col font-sans">
+  <div class="min-h-screen bg-gray-50 flex flex-col font-sans print:bg-white print:min-h-0">
     
-    <header v-if="isLoggedIn && route.name !== 'Apply' && route.name !== 'StudentBoard'" class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40">
+    <header v-if="isLoggedIn && route.name !== 'Apply' && route.name !== 'StudentBoard'" class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40 print:hidden">
       <div class="w-full px-4 sm:px-6">
         <div class="flex justify-between items-center h-16 gap-4">
           
@@ -67,7 +67,7 @@ const navMenus = [
       </div>
     </header>
 
-    <main class="flex-1 w-full">
+    <main class="flex-1 w-full print:p-0 print:m-0">
       <router-view />
     </main>
   </div>
