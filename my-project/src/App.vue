@@ -27,6 +27,7 @@ const navMenus = [
   { path: '/all-students', icon: '🏫', name: '전체 학생' },
   { path: '/homeroom', icon: '👥', name: '학급관리' },
   { path: '/subject', icon: '📝', name: '교과수업' },
+  { path: '/career', icon: '🧭', name: '진로' },
   { path: '/club', icon: '🎨', name: '동아리' },
   { path: '/worklog', icon: '📓', name: '업무일지' },
   { path: '/board-admin', icon: '📋', name: '조종례 관리' },
