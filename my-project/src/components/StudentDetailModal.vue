@@ -6,6 +6,7 @@ import { useCounselingStore } from '../stores/counselingStore'
 import { useAttendanceStore } from '../stores/attendanceStore'
 import { useAiNoteStore } from '../stores/aiNoteStore'
 
+// 💡 탭 컴포넌트들
 import StudentInfoTab from './StudentInfoTab.vue'
 import StudentCounselTab from './StudentCounselTab.vue'
 import StudentAttendanceTab from './StudentAttendanceTab.vue'
@@ -15,9 +16,12 @@ import StudentRecordTab from './StudentRecordTab.vue'
 import StudentPrintLayout from './StudentPrintLayout.vue'
 
 const props = defineProps({
-  student: { type: Object, required: true }
+  student: { type: Object, required: true },
+  // 💡 이전/다음 이동을 위해 현재 필터링된 학생 전체 명단이 필요합니다.
+  allStudents: { type: Array, default: () => [] }
 })
-const emit = defineEmits(['close'])
+
+const emit = defineEmits(['close', 'update-student']) // 💡 학생 변경 이벤트를 추가합니다.
 const activeTab = ref('info')
 
 const counselingStore = useCounselingStore()
@@ -28,6 +32,7 @@ const { logs: counselingLogs } = storeToRefs(counselingStore)
 const { logs: attendanceLogs } = storeToRefs(attendanceStore)
 const { notes: aiNotes } = storeToRefs(aiNoteStore)
 
+// 💡 학생이 바뀔 때마다 데이터를 새로 불러옵니다.
 watch(() => props.student, (newVal) => {
   if (newVal) {
     counselingStore.fetchLogs(newVal.id)
@@ -36,9 +41,29 @@ watch(() => props.student, (newVal) => {
   }
 }, { immediate: true })
 
-const handlePrint = () => {
-  window.print()
+// 💡 이전/다음 학생 찾기 로직
+const currentIndex = computed(() => {
+  return props.allStudents.findIndex(s => s.id === props.student.id)
+})
+
+const prevStudent = computed(() => {
+  if (currentIndex.value > 0) return props.allStudents[currentIndex.value - 1]
+  return null
+})
+
+const nextStudent = computed(() => {
+  if (currentIndex.value < props.allStudents.length - 1) return props.allStudents[currentIndex.value + 1]
+  return null
+})
+
+// 💡 학생 변경 핸들러
+const changeStudent = (targetStudent) => {
+  if (!targetStudent) return
+  emit('update-student', targetStudent)
+  // 탭 위치를 '학생 정보'나 '상담 기록'으로 유지하고 싶으시면 아래 activeTab은 그대로 두시면 됩니다.
 }
+
+const handlePrint = () => { window.print() }
 
 const singlePrintData = computed(() => [{
   student: props.student,
@@ -54,13 +79,34 @@ const singlePrintData = computed(() => [{
     <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden print:hidden">
       
       <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center shrink-0">
-        <div class="flex items-center gap-3">
-          <img v-if="student.photoUrl" :src="student.photoUrl" class="w-10 h-10 rounded-full object-cover border border-gray-300 shadow-sm">
-          <div v-else class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-lg shadow-sm">👤</div>
-          <h3 class="text-xl font-bold text-gray-800">{{ student.studentId }} {{ student.name }}</h3>
+        <div class="flex items-center gap-6">
+          <button 
+            @click="changeStudent(prevStudent)" 
+            :disabled="!prevStudent"
+            class="p-2 rounded-full hover:bg-gray-200 disabled:opacity-20 transition-colors"
+            title="이전 번호 학생"
+          >
+            <span class="text-2xl">◀</span>
+          </button>
+
+          <div class="flex items-center gap-3">
+            <img v-if="student.photoUrl" :src="student.photoUrl" class="w-10 h-10 rounded-full object-cover border border-gray-300 shadow-sm">
+            <div v-else class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-lg shadow-sm">👤</div>
+            <h3 class="text-xl font-bold text-gray-900">{{ student.studentId }} {{ student.name }}</h3>
+          </div>
+
+          <button 
+            @click="changeStudent(nextStudent)" 
+            :disabled="!nextStudent"
+            class="p-2 rounded-full hover:bg-gray-200 disabled:opacity-20 transition-colors"
+            title="다음 번호 학생"
+          >
+            <span class="text-2xl">▶</span>
+          </button>
         </div>
+
         <div class="flex items-center gap-4">
-          <button @click="handlePrint" class="text-sm bg-gray-800 text-white px-4 py-1.5 rounded-lg font-bold hover:bg-gray-900 transition-colors shadow-sm">🖨️ 학생 기록부 인쇄</button>
+          <button @click="handlePrint" class="text-sm bg-gray-800 text-white px-4 py-1.5 rounded-lg font-bold hover:bg-gray-900 transition-colors shadow-sm">🖨️ 인쇄</button>
           <button @click="$emit('close')" class="text-gray-400 hover:text-red-500 font-bold text-3xl leading-none">&times;</button>
         </div>
       </div>

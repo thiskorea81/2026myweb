@@ -207,7 +207,13 @@ const closeModal = () => { isModalOpen.value = false; selectedStudent.value = nu
       </div>
     </div>
 
-    <StudentDetailModal v-if="isModalOpen" :student="selectedStudent" @close="closeModal" />
+    <StudentDetailModal 
+      v-if="isModalOpen" 
+      :student="selectedStudent" 
+      :allStudents="filteredStudents" 
+      @close="closeModal" 
+      @update-student="(s) => selectedStudent = s"
+    />
     <StudentPrintLayout :printDataList="printDataList" />
   </div>
 </template>
