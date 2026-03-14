@@ -13,7 +13,6 @@ const studentStore = useStudentStore()
 const teacherMode = ref(false)
 const toastMessage = ref("")
 
-// 💡 1. 동적 자리 설정을 위한 변수들
 const colConfig = ref([5, 5, 6, 6, 5, 5]) 
 const showConfigModal = ref(false)
 const tempColCount = ref(6)
@@ -26,8 +25,6 @@ const savedLayouts = ref([])
 
 let originalTitle = ''
 
-// 💡 [핵심] 우리 반 학생만 필터링하는 computed 속성
-// localStorage에 저장된 학년/반 정보를 사용합니다 (기본값 1학년 1반)
 const myGrade = ref(localStorage.getItem('myGrade') || '1')
 const myClass = ref(localStorage.getItem('myClass') || '1')
 
@@ -55,7 +52,6 @@ const structure = (list) => {
   return result
 }
 
-// 💡 2. 초기 정렬 시 '전체 학생'이 아닌 '우리 반 학생'만 사용
 const getInitialFlatList = () => {
   const sorted = [...myRoomStudents.value].sort((a, b) => String(a.studentId).localeCompare(String(b.studentId)))
   const maxRows = Math.max(...colConfig.value)
@@ -73,13 +69,22 @@ const getInitialFlatList = () => {
   return tempSeats.flat()
 }
 
+// 💡 [핵심] 데이터 로드 시 기존 데이터를 복구하는 로직 추가
 const loadSeats = async () => {
-  // 💡 반별로 자리 배치를 따로 저장하도록 경로 변경 (settings/seatArrangement_1_1 형식)
   const docId = `seatArrangement_${myGrade.value}_${myClass.value}`
   const arrangementRef = doc(db, 'settings', docId)
-  const snap = await getDoc(arrangementRef)
+  let snap = await getDoc(arrangementRef)
 
-  if (snap.exists()) {
+  // 💡 새 반별 경로에 데이터가 없다면, 예전에 쓰던 통합 경로에서 데이터를 찾아옵니다.
+  if (!snap.exists()) {
+    const legacyRef = doc(db, 'settings', 'seatArrangement')
+    const legacySnap = await getDoc(legacyRef)
+    if (legacySnap.exists()) {
+      snap = legacySnap // 예전 데이터를 연결
+    }
+  }
+
+  if (snap && snap.exists()) {
     const data = snap.data()
     lastArrangement.value = data.last_arrangement || []
     savedLayouts.value = data.saved_layouts || [] 
@@ -89,7 +94,6 @@ const loadSeats = async () => {
     }
 
     if (data.current_seats && data.current_seats.length > 0) {
-      // 💡 여기서도 우리 반 학생 풀에서만 찾습니다.
       const loadedStudents = data.current_seats.map(studentId => 
         studentId ? myRoomStudents.value.find(s => s.studentId === studentId) || null : null
       )
@@ -276,7 +280,6 @@ onUnmounted(() => {
   if (originalTitle) document.title = originalTitle
 })
 
-// 💡 3. 학생 데이터 로드 혹은 학년/반 변경 시 다시 렌더링
 watch([() => studentStore.students, myGrade, myClass], async () => {
   if (studentStore.students.length > 0) {
     await loadSeats()
@@ -378,7 +381,6 @@ watch([() => studentStore.students, myGrade, myClass], async () => {
 </template>
 
 <style scoped>
-/* 기존 스타일 동일 */
 .fade-enter-active, .fade-leave-active { transition: all 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; transform: translate(-50%, -20px); }
 
