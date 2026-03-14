@@ -8,9 +8,11 @@ import { db } from '../firebase'
 import { aiService } from '../services/aiService' 
 import { recordSchema, getRecordPrompt } from '../services/aiPrompts' 
 
+// 💡 하위 컴포넌트 임포트 (활동 등록 컴포넌트 포함)
 import StudentBulkUpload from '../components/StudentBulkUpload.vue'
 import GradeBulkUpload from '../components/GradeBulkUpload.vue'
 import PhotoBulkUpload from '../components/PhotoBulkUpload.vue'
+import ActivityBulkUpload from '../components/ActivityBulkUpload.vue'
 import StudentListTable from '../components/StudentListTable.vue'
 import StudentDetailModal from '../components/StudentDetailModal.vue'
 import StudentPrintLayout from '../components/StudentPrintLayout.vue' 
@@ -26,7 +28,7 @@ const myClass = ref(localStorage.getItem('myClass') || '1')
 watch([myGrade, myClass], ([newGrade, newClass]) => {
   localStorage.setItem('myGrade', newGrade)
   localStorage.setItem('myClass', newClass)
-  selectedIds.value = [] 
+  selectedIds.value = [] // 반이 바뀌면 선택 해제
 })
 
 // 💡 우리 반 학생만 필터링
@@ -125,9 +127,12 @@ const handleBulkPrint = async () => {
   }
 }
 
+// 💡 업로드 영역 토글 상태 (활동 등록 추가)
 const showUploadArea = ref(false)
 const showGradeUploadArea = ref(false)
 const showPhotoUploadArea = ref(false)
+const showActivityUploadArea = ref(false)
+
 const isModalOpen = ref(false)
 const selectedStudent = ref(null)
 
@@ -175,6 +180,14 @@ const closeModal = () => { isModalOpen.value = false; selectedStudent.value = nu
           >
             💯 성적 등록
           </button>
+          
+          <button 
+            @click="showActivityUploadArea = !showActivityUploadArea" 
+            class="text-xs md:text-sm px-3 py-2 bg-teal-100 text-teal-900 border border-teal-300 rounded-lg font-bold whitespace-nowrap hover:bg-teal-200 transition-colors"
+          >
+            🎯 활동 등록
+          </button>
+
           <button 
             @click="showUploadArea = !showUploadArea" 
             class="text-xs md:text-sm px-4 py-2 bg-gray-300 text-gray-900 border border-gray-400 rounded-lg font-bold whitespace-nowrap hover:bg-gray-400 transition-colors"
@@ -199,6 +212,7 @@ const closeModal = () => { isModalOpen.value = false; selectedStudent.value = nu
       <PhotoBulkUpload v-if="showPhotoUploadArea" />
       <GradeBulkUpload v-if="showGradeUploadArea" />
       <StudentBulkUpload v-if="showUploadArea" />
+      <ActivityBulkUpload v-if="showActivityUploadArea" @close="showActivityUploadArea = false" />
       
       <StudentListTable :students="filteredStudents" v-model="selectedIds" @open-modal="openModal" />
       
@@ -210,10 +224,11 @@ const closeModal = () => { isModalOpen.value = false; selectedStudent.value = nu
     <StudentDetailModal 
       v-if="isModalOpen" 
       :student="selectedStudent" 
-      :allStudents="filteredStudents" 
+      :allStudents="filteredStudents"
       @close="closeModal" 
       @update-student="(s) => selectedStudent = s"
     />
+    
     <StudentPrintLayout :printDataList="printDataList" />
   </div>
 </template>
