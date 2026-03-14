@@ -14,7 +14,7 @@ const teacherMode = ref(false)
 const toastMessage = ref("")
 
 // 💡 1. 동적 자리 설정을 위한 변수들
-const colConfig = ref([5, 5, 6, 6, 5, 5]) // 기본값
+const colConfig = ref([5, 5, 6, 6, 5, 5]) 
 const showConfigModal = ref(false)
 const tempColCount = ref(6)
 const tempRowCounts = ref([])
@@ -26,17 +26,27 @@ const savedLayouts = ref([])
 
 let originalTitle = ''
 
+// 💡 [핵심] 우리 반 학생만 필터링하는 computed 속성
+// localStorage에 저장된 학년/반 정보를 사용합니다 (기본값 1학년 1반)
+const myGrade = ref(localStorage.getItem('myGrade') || '1')
+const myClass = ref(localStorage.getItem('myClass') || '1')
+
+const myRoomStudents = computed(() => {
+  return studentStore.students.filter(s => 
+    String(s.grade) === String(myGrade.value) && 
+    String(s.class) === String(myClass.value)
+  )
+})
+
 const showToast = (msg) => {
   toastMessage.value = msg
   setTimeout(() => { toastMessage.value = "" }, 2000)
 }
 
-// 💡 2. 설정된 열/행 배열을 바탕으로 구조화
 const structure = (list) => {
   let result = []
   let current = 0
   colConfig.value.forEach(size => {
-    // 설정된 크기만큼 자르고, 부족하면 null로 채움
     const slice = list.slice(current, current + size)
     while (slice.length < size) slice.push(null)
     result.push(slice)
@@ -45,14 +55,13 @@ const structure = (list) => {
   return result
 }
 
-// 💡 3. 처음 순서대로 배치할 때도 앞자리부터 행 단위로 예쁘게 채우도록 로직 업그레이드
+// 💡 2. 초기 정렬 시 '전체 학생'이 아닌 '우리 반 학생'만 사용
 const getInitialFlatList = () => {
-  const sorted = [...studentStore.students].sort((a, b) => a.studentId.localeCompare(b.studentId))
+  const sorted = [...myRoomStudents.value].sort((a, b) => String(a.studentId).localeCompare(String(b.studentId)))
   const maxRows = Math.max(...colConfig.value)
   let tempSeats = Array.from({ length: colConfig.value.length }, () => [])
   let studentIdx = 0
 
-  // 1열 1행, 2열 1행, 3열 1행... 순서로 지그재그로 채워넣음
   for (let r = 0; r < maxRows; r++) {
     for (let c = 0; c < colConfig.value.length; c++) {
       if (r < colConfig.value[c]) {
@@ -65,7 +74,9 @@ const getInitialFlatList = () => {
 }
 
 const loadSeats = async () => {
-  const arrangementRef = doc(db, 'settings', 'seatArrangement')
+  // 💡 반별로 자리 배치를 따로 저장하도록 경로 변경 (settings/seatArrangement_1_1 형식)
+  const docId = `seatArrangement_${myGrade.value}_${myClass.value}`
+  const arrangementRef = doc(db, 'settings', docId)
   const snap = await getDoc(arrangementRef)
 
   if (snap.exists()) {
@@ -73,15 +84,14 @@ const loadSeats = async () => {
     lastArrangement.value = data.last_arrangement || []
     savedLayouts.value = data.saved_layouts || [] 
     
-    // DB에 저장된 자리 형태(col_config)가 있다면 불러오기
     if (data.col_config) {
       colConfig.value = data.col_config
     }
 
     if (data.current_seats && data.current_seats.length > 0) {
-      const allStudents = studentStore.students
+      // 💡 여기서도 우리 반 학생 풀에서만 찾습니다.
       const loadedStudents = data.current_seats.map(studentId => 
-        studentId ? allStudents.find(s => s.studentId === studentId) || null : null
+        studentId ? myRoomStudents.value.find(s => s.studentId === studentId) || null : null
       )
       seats.value = structure(loadedStudents)
       return
@@ -92,9 +102,9 @@ const loadSeats = async () => {
 
 const saveToFirebase = async (mode = 'current') => {
   const flatList = seats.value.flat().map(s => s ? s.studentId : null)
-  const arrangementRef = doc(db, 'settings', 'seatArrangement')
+  const docId = `seatArrangement_${myGrade.value}_${myClass.value}`
+  const arrangementRef = doc(db, 'settings', docId)
   
-  // 자리 형태(col_config)도 함께 저장
   let updateData = { 
     current_seats: flatList,
     col_config: colConfig.value 
@@ -107,7 +117,6 @@ const saveToFirebase = async (mode = 'current') => {
     const name = prompt("저장할 자리 배치의 이름을 입력하세요 (예: 1학기 중간고사)")
     if (!name) return 
     
-    // 히스토리 저장 시 당시의 형태(colConfig)도 같이 저장
     const newLayout = { 
       id: Date.now(), 
       name: name, 
@@ -135,14 +144,12 @@ const saveToFirebase = async (mode = 'current') => {
 const loadLayout = async (layout) => {
   if (!confirm(`'${layout.name}' 배치를 불러오시겠습니까?`)) return
   
-  // 저장된 레이아웃의 형태(colConfig)가 있다면 그것도 복원, 없으면 현재 형태 유지
   if (layout.colConfig) {
     colConfig.value = layout.colConfig
   }
   
-  const allStudents = studentStore.students
   const loadedStudents = layout.seats.map(studentId => 
-    studentId ? allStudents.find(s => s.studentId === studentId) || null : null
+    studentId ? myRoomStudents.value.find(s => s.studentId === studentId) || null : null
   )
   seats.value = structure(loadedStudents)
   await saveToFirebase('current')
@@ -152,8 +159,9 @@ const loadLayout = async (layout) => {
 const deleteLayout = async (id) => {
   if (!confirm("이 배치 기록을 목록에서 삭제하시겠습니까?")) return
   const updatedLayouts = savedLayouts.value.filter(l => l.id !== id)
+  const docId = `seatArrangement_${myGrade.value}_${myClass.value}`
   try {
-    await setDoc(doc(db, 'settings', 'seatArrangement'), { saved_layouts: updatedLayouts }, { merge: true })
+    await setDoc(doc(db, 'settings', docId), { saved_layouts: updatedLayouts }, { merge: true })
     savedLayouts.value = updatedLayouts
     showToast("목록에서 삭제되었습니다.")
   } catch (error) {
@@ -175,7 +183,6 @@ const checkOverlap = (newList, lastList) => {
   return false
 }
 
-// 💡 4. 셔플 시 전체 좌석 수(총합)에 맞게 빈자리 처리 보완
 const shuffleSeats = () => {
   let shuffled = []
   let attempts = 0
@@ -212,19 +219,16 @@ const handleDrop = async (targetCol, targetRow) => {
 
 const handlePrint = () => { window.print() }
 
-// 💡 교탁 시점(역방향) 출력 시에도 동적 길이에 완벽하게 대응
 const teacherViewSeats = computed(() => {
   if (!seats.value.length) return []
   const maxRows = Math.max(...colConfig.value)
   return [...seats.value].reverse().map((col, index) => {
     const reversedCol = [...col].reverse()
-    // 원래 열이 가지고 있던 빈공간(최대 행 기준)만큼 앞에 null 패딩
     while (reversedCol.length < maxRows) { reversedCol.unshift(null) }
     return reversedCol
   })
 })
 
-// === 💡 자리 형태 모달 컨트롤러 ===
 const openConfigModal = () => {
   tempColCount.value = colConfig.value.length
   tempRowCounts.value = [...colConfig.value]
@@ -232,9 +236,9 @@ const openConfigModal = () => {
 }
 
 const adjustRowCounts = () => {
-  const count = Math.max(1, Math.min(10, tempColCount.value || 1)) // 최대 10열 제한
+  const count = Math.max(1, Math.min(10, tempColCount.value || 1))
   if (tempRowCounts.value.length < count) {
-    while (tempRowCounts.value.length < count) tempRowCounts.value.push(6) // 새 열은 기본 6행
+    while (tempRowCounts.value.length < count) tempRowCounts.value.push(6)
   } else if (tempRowCounts.value.length > count) {
     tempRowCounts.value = tempRowCounts.value.slice(0, count)
   }
@@ -244,7 +248,6 @@ const applyConfig = async () => {
   colConfig.value = [...tempRowCounts.value]
   showConfigModal.value = false
 
-  // 현재 있는 학생들을 유지한 채로 새 프레임에 맞춰 배열
   const currentStudents = seats.value.flat().filter(s => s !== null)
   const totalSeats = colConfig.value.reduce((a, b) => a + b, 0)
   const flatList = []
@@ -254,7 +257,7 @@ const applyConfig = async () => {
   }
 
   seats.value = structure(flatList)
-  await saveToFirebase('config') // 변경된 형태 저장
+  await saveToFirebase('config') 
   showToast('자리 형태가 변경되었습니다.')
 }
 
@@ -263,7 +266,7 @@ onMounted(async () => {
   document.title = '자리배치'
 
   if (studentStore.students.length === 0) {
-    studentStore.fetchStudents()
+    await studentStore.fetchStudents()
   } else {
     await loadSeats()
   }
@@ -273,8 +276,9 @@ onUnmounted(() => {
   if (originalTitle) document.title = originalTitle
 })
 
-watch(() => studentStore.students, async (newVal) => {
-  if (newVal.length > 0 && seats.value.length === 0) {
+// 💡 3. 학생 데이터 로드 혹은 학년/반 변경 시 다시 렌더링
+watch([() => studentStore.students, myGrade, myClass], async () => {
+  if (studentStore.students.length > 0) {
     await loadSeats()
   }
 }, { immediate: true })
@@ -325,8 +329,10 @@ watch(() => studentStore.students, async (newVal) => {
               ⚙️ 형태 설정 (현재 {{ colConfig.length }}열)
             </button>
           </h1>
-          <div class="info-badge mt-2 text-sm text-gray-500 flex gap-2">
-            <span>👥 등록 학생: {{ studentStore.students.length }}명</span>
+          <div class="info-badge mt-2 text-sm text-gray-500 flex gap-2 font-bold">
+            <span class="text-blue-600">{{ myGrade }}학년 {{ myClass }}반</span>
+            <span>|</span>
+            <span>👥 우리 반: {{ myRoomStudents.length }}명</span>
             <span>|</span>
             <span>🪑 총 좌석: {{ colConfig.reduce((a, b) => a + b, 0) }}석</span>
           </div>
@@ -349,7 +355,7 @@ watch(() => studentStore.students, async (newVal) => {
         <SeatSidebar 
           :savedLayouts="savedLayouts" 
           :teacherMode="teacherMode" 
-          :students="studentStore.students"
+          :students="myRoomStudents"
           @clear="clearLayout"
           @load="loadLayout"
           @delete="deleteLayout"
@@ -366,12 +372,13 @@ watch(() => studentStore.students, async (newVal) => {
     <SeatPrint 
       :seats="seats"
       :teacherViewSeats="teacherViewSeats"
-      :students="studentStore.students"
+      :students="myRoomStudents"
     />
   </div>
 </template>
 
 <style scoped>
+/* 기존 스타일 동일 */
 .fade-enter-active, .fade-leave-active { transition: all 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; transform: translate(-50%, -20px); }
 
