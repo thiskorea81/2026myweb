@@ -29,7 +29,7 @@ defineEmits(['open-config', 'toggle-teacher-mode', 'save-history', 'print-seat',
       </div>
     </div>
     
-    <div class="button-group flex gap-2 flex-wrap">
+    <div class="button-group flex gap-2 flex-wrap items-center">
       <button @click="$emit('toggle-teacher-mode')" class="px-4 py-2 rounded-lg font-bold text-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50" :class="{ '!bg-yellow-50 !border-yellow-400 !text-yellow-800': teacherMode }">
         {{ teacherMode ? '📋 명렬표 닫기' : '📋 명렬표 보기' }}
       </button>
@@ -42,10 +42,12 @@ defineEmits(['open-config', 'toggle-teacher-mode', 'save-history', 'print-seat',
         🎲 자리 섞기
       </button>
 
-      <div class="flex bg-gray-800 rounded-lg p-1 ml-2 shadow-md">
-        <button @click="$emit('print-seat')" class="px-3 py-1.5 rounded text-sm font-bold text-white hover:bg-gray-700 transition-colors">🖨️ 자리표 인쇄</button>
-        <div class="w-px bg-gray-600 my-1 mx-1"></div>
-        <button @click="$emit('print-photo')" class="px-3 py-1.5 rounded text-sm font-bold text-amber-300 hover:bg-gray-700 transition-colors">📸 사진명렬표</button>
+      <div class="flex bg-gray-800 rounded-lg p-1 ml-2 shadow-md gap-1">
+        <button @click="$emit('print-seat', 'top')" class="px-2 py-1.5 rounded text-xs font-bold text-white hover:bg-gray-700 transition-colors">🖨️ 자리표(교탁⬆️)</button>
+        <button @click="$emit('print-seat', 'bottom')" class="px-2 py-1.5 rounded text-xs font-bold text-white hover:bg-gray-700 transition-colors">🖨️ 자리표(교탁⬇️)</button>
+        <div class="w-px bg-gray-600 my-1 mx-0.5"></div>
+        <button @click="$emit('print-photo', 'top')" class="px-2 py-1.5 rounded text-xs font-bold text-amber-300 hover:bg-gray-700 transition-colors">📸 사진(교탁⬆️)</button>
+        <button @click="$emit('print-photo', 'bottom')" class="px-2 py-1.5 rounded text-xs font-bold text-amber-300 hover:bg-gray-700 transition-colors">📸 사진(교탁⬇️)</button>
       </div>
     </div>
   </header>

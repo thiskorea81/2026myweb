@@ -2,97 +2,104 @@
 defineProps({
   seats: Array,
   teacherViewSeats: Array,
-  students: Array
+  students: Array,
+  myGrade: String,
+  myClass: String
 })
-
-const getShortId = (fullId) => fullId ? String(fullId).slice(-2) : ''
 </script>
 
 <template>
-  <div class="print-only hidden">
-    <div class="print-page pb-6 flex flex-col">
-      <h2 class="text-center text-2xl font-bold mb-6">자리배치 (게시용)</h2>
-      <div class="border border-gray-300 p-8 rounded-xl bg-white shadow-sm flex-1 flex flex-col">
-        <div class="flex justify-center mb-12">
-          <div class="w-1/2 h-10 bg-gray-50 border-2 border-gray-400 rounded-lg flex items-center justify-center text-gray-700 font-bold tracking-[0.5rem] text-sm shadow-inner">
-            칠 판
-          </div>
+  <div class="print-container w-full bg-white text-gray-900 font-sans">
+    
+    <div class="print-page w-full flex flex-col items-center pt-8 pb-8 px-8">
+      <div class="text-center mb-8 shrink-0">
+        <h2 class="text-4xl font-black text-gray-900">{{ myGrade }}학년 {{ myClass }}반 자리 배치도</h2>
+        <p class="text-gray-500 font-bold mt-2">게시판용 (앞에서 바라본 모습)</p>
+      </div>
+
+      <div class="w-full flex justify-center mb-24 shrink-0">
+        <div class="w-1/3 py-3 bg-gray-200 border-[3px] border-gray-400 text-center font-black text-2xl text-gray-700 tracking-[0.5em] rounded-b-2xl shadow-sm">
+          교 탁
         </div>
-        <div class="flex justify-between gap-4">
-          <div v-for="(col, colIdx) in seats" :key="colIdx" class="flex-1 flex flex-col gap-3">
-            <div class="text-center text-xs font-bold text-gray-400 mb-1">COL {{ colIdx + 1 }}</div>
-            <div v-for="(student, rowIdx) in col" :key="rowIdx" class="aspect-[16/10] border-2 border-gray-200 rounded-xl flex flex-col items-center justify-center relative" :class="{ 'bg-gray-50 border-dashed': !student }">
-              <template v-if="student">
-                <span class="absolute top-2 left-2 text-[0.65rem] text-gray-500 font-mono">{{ getShortId(student.studentId) }}</span>
-                <span class="font-bold text-xl" :class="student.gender === '남' ? 'text-blue-700' : 'text-rose-700'">{{ student.name }}</span>
-              </template>
-            </div>
-            <div v-if="col.length < 6" class="aspect-[16/10] invisible"></div>
+      </div>
+
+      <div class="flex justify-center gap-4 w-full box-border">
+        <div v-for="(col, cIdx) in seats" :key="cIdx" class="flex flex-col gap-4 flex-1 max-w-[160px]">
+          <div v-for="(student, rIdx) in col" :key="rIdx" 
+               class="w-full aspect-[2/1] border-[3px] border-gray-400 rounded-xl flex flex-col items-center justify-center p-2 bg-white box-border shadow-sm">
+            <template v-if="student">
+              <div class="text-sm font-black text-blue-700 mb-1 leading-none">{{ student.studentId }}</div>
+              <div class="text-2xl font-black text-gray-900 tracking-tight whitespace-nowrap leading-none">{{ student.name }}</div>
+            </template>
+            <template v-else>
+              <div class="text-sm font-black text-transparent mb-1 leading-none">00000</div>
+              <div class="text-2xl font-black text-gray-300 tracking-tight whitespace-nowrap leading-none">빈 자리</div>
+            </template>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="print-page pt-6 flex gap-6 h-full">
+    <div class="print-page w-full flex gap-6 pt-6 pb-6 px-6 page-break-before">
       
-      <div class="w-4/5 flex flex-col">
-        <h2 class="text-center text-2xl font-bold mb-6">자리배치 (교탁용)</h2>
-        <div class="border border-gray-300 p-6 rounded-xl bg-white shadow-sm flex flex-col flex-1">
+      <div class="w-3/4 flex flex-col h-full border-r-2 border-dashed border-gray-300 pr-6">
+        
+        <div class="text-center mb-10 shrink-0">
+          <h2 class="text-3xl font-black text-gray-900">{{ myGrade }}학년 {{ myClass }}반 자리 배치도</h2>
+          <p class="text-gray-500 font-bold mt-2">교사 시점 (교탁에서 바라본 모습)</p>
+        </div>
+
+        <div class="flex-1 flex flex-col items-center justify-start min-h-0 w-full">
           
-          <div class="flex justify-between gap-4 mb-12">
-            <div v-for="(col, colIdx) in teacherViewSeats" :key="colIdx" class="flex-1 flex flex-col gap-2">
-              <div v-for="(student, rowIdx) in col" :key="rowIdx" class="aspect-[16/10] border-2 border-gray-200 rounded-lg flex flex-col items-center justify-center relative" :class="{ 'bg-gray-50 border-dashed': !student }">
+          <div class="flex justify-center gap-3 w-full mb-10">
+            <div v-for="(col, cIdx) in teacherViewSeats" :key="cIdx" class="flex flex-col gap-3 flex-1">
+              <div v-for="(student, rIdx) in col" :key="rIdx" 
+                   class="w-full aspect-[2/1] border-[2px] border-gray-400 rounded-lg flex flex-col items-center justify-center p-1.5 bg-white box-border">
                 <template v-if="student">
-                  <span class="absolute top-1 left-1.5 text-[0.6rem] text-gray-500 font-mono">{{ getShortId(student.studentId) }}</span>
-                  <span class="font-bold text-sm mt-1" :class="student.gender === '남' ? 'text-blue-700' : 'text-rose-700'">{{ student.name }}</span>
+                  <div class="text-xs font-black text-blue-700 mb-1 leading-none">{{ student.studentId }}</div>
+                  <div class="text-lg font-black text-gray-900 tracking-tight whitespace-nowrap leading-none">{{ student.name }}</div>
+                </template>
+                <template v-else>
+                  <div class="text-xs font-black text-transparent mb-1 leading-none">00000</div>
+                  <div class="text-lg font-black text-gray-300 tracking-tight whitespace-nowrap leading-none">빈 자리</div>
                 </template>
               </div>
             </div>
           </div>
-          
-          <div class="flex justify-center">
-            <div class="w-1/2 h-10 bg-gray-50 border-2 border-gray-400 rounded flex items-center justify-center text-gray-700 font-bold text-xs">
-              칠 판 (교탁 앞)
-            </div>
+
+          <div class="w-1/3 py-2 bg-gray-200 border-[3px] border-gray-400 text-center font-black text-xl text-gray-700 tracking-[0.5em] rounded-t-2xl shrink-0 shadow-sm">
+            교 탁
           </div>
         </div>
       </div>
 
-      <div class="w-1/5 border-l border-gray-200 pl-4 flex flex-col">
-        <table class="w-full text-xs text-left border-collapse">
-          <thead>
-            <tr><th colspan="2" class="pb-3 text-sm font-bold text-center text-gray-800">학생 명렬표</th></tr>
-            <tr class="border-b-2 border-gray-300"><th class="py-1 w-10">번호</th><th class="py-1">이름</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="s in students" :key="s.id" class="border-b border-gray-100">
-              <td class="py-1 font-mono text-gray-500">{{ getShortId(s.studentId) }}</td>
-              <td class="py-1 font-bold" :class="s.gender === '남' ? 'text-blue-700' : 'text-rose-700'">{{ s.name }}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="w-1/4 h-full border-[3px] border-gray-400 rounded-xl p-3 bg-white flex flex-col shadow-sm box-border shrink-0">
+        <h3 class="text-base font-black text-center border-b-2 border-gray-400 pb-2 mb-2 bg-gray-100 rounded shrink-0">학급 명렬표</h3>
+        <div class="flex-1 flex flex-col justify-between overflow-hidden">
+          <div v-for="s in students" :key="s.studentId" class="flex justify-between border-b border-gray-100 py-[2px] px-1">
+            <span class="text-gray-500 text-[11px] sm:text-xs font-bold">{{ s.studentId }}</span>
+            <span class="text-gray-900 text-[12px] sm:text-sm font-black">{{ s.name }}</span>
+          </div>
+        </div>
       </div>
 
     </div>
+
   </div>
 </template>
 
 <style scoped>
 @media print {
-  @page { margin: 10mm; }
-  body, html { height: auto !important; }
-  .no-print { display: none !important; }
-  .print-only { display: block !important; }
+  @page { size: A4 landscape; margin: 10mm; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  
-  .print-page {
-    page-break-inside: avoid;
-    page-break-after: always;
-    height: 100vh;
-    box-sizing: border-box;
+  .print-page { 
+    width: 100%; 
+    height: 100vh !important; 
+    max-height: 100vh !important;
+    overflow: hidden !important; 
+    page-break-after: always; 
+    box-sizing: border-box; 
   }
-  .print-page:last-child {
-    page-break-after: auto;
-  }
+  .page-break-before { page-break-before: always; }
 }
 </style>

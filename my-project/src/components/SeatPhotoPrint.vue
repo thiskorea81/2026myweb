@@ -1,38 +1,39 @@
 <script setup>
 defineProps({
-  teacherViewSeats: { type: Array, required: true },
+  teacherViewSeats: Array,
   myGrade: String,
   myClass: String
 })
 </script>
 
 <template>
-  <div class="print-container bg-white p-8">
-    <div class="text-center mb-8">
-      <h2 class="text-3xl font-black text-gray-900 tracking-tight">{{ myGrade }}학년 {{ myClass }}반 사진 명렬표</h2>
-      <p class="text-gray-500 font-bold mt-2">현재 자리 배치 기준 (교탁 시점)</p>
-    </div>
+  <div class="print-container w-full bg-white text-gray-900 font-sans flex flex-col items-center justify-center">
 
-    <div class="w-1/2 mx-auto bg-gray-200 text-gray-600 font-black text-xl py-3 rounded-t-xl text-center mb-8 border border-gray-300">
-      교 탁
-    </div>
-
-    <div class="flex justify-center gap-4">
-      <div v-for="(col, cIdx) in teacherViewSeats" :key="cIdx" class="flex flex-col gap-4">
+    <div class="flex justify-center gap-2 w-full px-2">
+      <div v-for="(col, cIdx) in teacherViewSeats" :key="cIdx" class="flex flex-col gap-2 flex-1">
         
-        <div v-for="(student, rIdx) in col" :key="rIdx" class="w-[110px] h-[150px] border-2 border-gray-300 rounded-xl flex flex-col items-center justify-center p-2 bg-white box-border">
+        <div v-for="(student, rIdx) in col" :key="rIdx" 
+             class="w-full border-[2px] border-gray-400 rounded-lg flex flex-col items-center p-1 bg-white box-border">
+          
           <template v-if="student">
-            <img v-if="student.photoUrl" :src="student.photoUrl" class="w-[70px] h-[90px] object-cover mb-2 rounded border border-gray-200 shadow-sm">
-            <div v-else class="w-[70px] h-[90px] bg-gray-100 flex items-center justify-center text-3xl mb-2 rounded border border-gray-200 shadow-sm">👤</div>
+            <div class="w-full aspect-[3/4] mb-1 rounded bg-gray-50 border border-gray-200 overflow-hidden flex items-center justify-center shrink-0">
+              <img v-if="student.photoUrl" :src="student.photoUrl" class="w-full h-full object-cover">
+              <span v-else class="text-2xl text-gray-300">👤</span>
+            </div>
             
-            <div class="text-[11px] font-bold text-blue-600 leading-none mb-1">{{ student.studentId }}</div>
-            <div class="text-[15px] font-black text-gray-900 leading-none">{{ student.name }}</div>
+            <div class="flex flex-col items-center justify-center w-full shrink-0 pb-0.5">
+              <span class="text-[11px] font-black text-gray-900 leading-tight whitespace-nowrap">{{ student.name }}</span>
+            </div>
           </template>
+          
           <template v-else>
-            <div class="flex-1 flex items-center justify-center text-gray-300 text-sm font-bold">빈 자리</div>
+            <div class="w-full aspect-[3/4] mb-1 rounded bg-gray-50 flex items-center justify-center shrink-0">
+              <span class="text-gray-300 text-[11px] font-bold">빈자리</span>
+            </div>
+            <div class="flex flex-col items-center justify-center w-full shrink-0 pb-0.5 h-[15px]"></div>
           </template>
-        </div>
 
+        </div>
       </div>
     </div>
   </div>
@@ -40,7 +41,19 @@ defineProps({
 
 <style scoped>
 @media print {
-  @page { margin: 10mm; size: landscape; }
-  .print-container { padding: 0 !important; }
+  @page { size: A4 portrait; margin: 8mm; } 
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  
+  /* 💡 2페이지 빈 종이 생성을 원천 차단하는 핵심 CSS */
+  .print-container { 
+    width: 100%; 
+    height: 100vh !important;      /* 정확히 1장 높이로 고정 */
+    max-height: 100vh !important;  
+    overflow: hidden !important;   /* 1장을 넘어가는 눈에 보이지 않는 1~2px의 여백을 완전히 잘라냄 */
+    page-break-after: avoid !important; 
+    page-break-inside: avoid !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
 }
 </style>
