@@ -82,7 +82,7 @@ const navMenus = [
 <template>
   <div class="min-h-screen bg-gray-50 flex flex-col font-sans print:bg-white print:min-h-0">
     
-    <header v-if="isLoggedIn && route.name !== 'Apply' && route.name !== 'StudentBoard'" class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40 print:hidden">
+    <header v-if="isLoggedIn && route.name !== 'Apply' && route.name !== 'StudentBoard' && route.name !== 'Apply' && route.name !== 'TeacherBoard'" class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40 print:hidden">
       <div class="w-full px-2 sm:px-6">
         <div class="flex justify-between items-center h-16 gap-2 sm:gap-4">
           
@@ -106,6 +106,10 @@ const navMenus = [
           <div class="flex items-center gap-1 sm:gap-2 shrink-0">
             <router-link to="/board" target="_blank" class="hidden md:inline-flex px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors whitespace-nowrap" title="새 창으로 조종례 보드 열기">
               📢 조종례 화면
+            </router-link>
+
+            <router-link to="/teacher-board" target="_blank" class="hidden md:inline-flex px-2.5 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors whitespace-nowrap" title="선생님들 공유용 조종례">
+              🤝 동료 공유용 조종례
             </router-link>
             
             <router-link to="/seats" class="hidden md:inline-flex px-2.5 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold hover:bg-amber-100 transition-colors whitespace-nowrap" title="학생 자리배치 관리">
@@ -133,10 +137,14 @@ const navMenus = [
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;700;900&display=swap');
-body {
+/* 💡 브라우저 전체 배경과 기본 글씨색을 라이트 모드로 강제 고정합니다 */
+html, body {
   font-family: 'Pretendard', -apple-system, sans-serif;
   margin: 0;
   padding: 0;
+  background-color: #f9fafb; /* Tailwind의 bg-gray-50 색상 */
+  color: #111827; /* Tailwind의 text-gray-900 색상 */
+  color-scheme: light !important; /* 브라우저의 강제 다크모드 무효화 */
 }
 
 .custom-scrollbar::-webkit-scrollbar {

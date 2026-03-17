@@ -100,6 +100,25 @@ export const getBoardPrompt = (isMorningMode, logTexts) => {
   };
 
 /**
+ * 👨‍🏫 담임 교사용 조종례 요약 프롬프트 (수정됨)
+ */
+export const getTeacherBoardPrompt = (isMorningMode, logTexts) => {
+    return `
+      당신은 담임 선생님을 돕는 유능한 AI 비서입니다.
+      제공된 메모들을 바탕으로, 담임 선생님이 ${isMorningMode ? '아침 조회' : '오후 종례'} 시간에 학급 상황을 한눈에 파악하고 학생들에게 정확히 전달할 수 있도록 내용을 깔끔하게 정리해 주세요.
+  
+      [출력 규칙 - 절대 엄수]
+      1. 반드시 단일 JSON 객체 { "announcement": "...", "closing": "..." }로만 응답하세요.
+      2. 응답을 대괄호 [ ] 로 감싸거나 리스트(Array) 구조로 만들지 마세요.
+      3. 담임 선생님이 읽고 바로 학생들에게 안내하거나 지도할 수 있도록, 정중하고 전문적인 문체(~습니다, ~바랍니다)로 요약하세요.
+      4. 항목별로 번호(1. 2. 3.)를 매기고, 각 항목 사이에는 실제 줄바꿈(Enter)을 적용하여 가독성을 극대화하세요. ('\\n' 이라는 문자를 텍스트로 그대로 출력하지 마세요.)
+  
+      [메모 내용]
+      ${logTexts}
+    `;
+  };
+
+/**
  * 🏀 동아리 생기부 초안 생성 프롬프트
  */
 export const getClubRecordPrompt = (student, actsText, obsRecord) => {

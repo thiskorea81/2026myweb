@@ -1,0 +1,254 @@
+<script setup>
+import { ref, onMounted, computed } from 'vue'
+import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore'
+import { db } from '../firebase'
+import { aiService } from '../services/aiService'
+import { announcementSchema, getTeacherBoardPrompt } from '../services/aiPrompts'
+import { useStudentStore } from '../stores/studentStore' // 💡 학생 DB 연동
+
+const studentStore = useStudentStore()
+const isLoggedIn = computed(() => localStorage.getItem('isLoggedIn') === 'true')
+
+const viewGrade = ref(localStorage.getItem('myGrade') || '1')
+const viewClass = ref(localStorage.getItem('myClass') || '1')
+
+const aiAnnouncement = ref('')
+const isLoading = ref(true)
+const isRegenerating = ref(false) 
+
+const isMorningMode = ref(true)
+const boardTitle = computed(() => `${viewGrade.value}학년 ${viewClass.value}반 ${isMorningMode.value ? '아침' : '하교 전'} 전달사항`)
+
+const grades = [1, 2, 3]
+const classes = Array.from({length: 9}, (_, i) => i + 1)
+
+const getBoardInfo = () => {
+  const realNow = new Date()
+  const currentHour = realNow.getHours()
+  const currentMinute = realNow.getMinutes()
+  const timeInt = currentHour * 100 + currentMinute 
+
+  let targetDbDate = new Date(realNow)
+  let epochKey = '' 
+  let morningMode = true
+
+  if (timeInt >= 1220) {
+    epochKey = '1220'
+    morningMode = false
+  } else if (timeInt >= 730) { 
+    epochKey = '0730'
+    morningMode = true
+  } else {
+    targetDbDate.setDate(targetDbDate.getDate() - 1)
+    epochKey = '1220' 
+    morningMode = false 
+  }
+
+  const dateString = `${targetDbDate.getFullYear()}-${String(targetDbDate.getMonth()+1).padStart(2,'0')}-${String(targetDbDate.getDate()).padStart(2,'0')}`
+  const documentId = `${dateString}_${epochKey}` 
+
+  let logTargetDate = new Date(targetDbDate)
+  if (epochKey === '0730') logTargetDate.setDate(logTargetDate.getDate() - 1) 
+
+  return { documentId, logTargetDate, morningMode }
+}
+
+const loadBoardContent = async (forceRegenerate = false) => {
+  if (!isLoggedIn.value && forceRegenerate) return 
+  
+  if (forceRegenerate) isRegenerating.value = true
+  else isLoading.value = true
+
+  try {
+    const info = getBoardInfo()
+    isMorningMode.value = info.morningMode
+    
+    const docId = `${viewGrade.value}_${viewClass.value}_${info.documentId}`
+    const summaryRef = doc(db, 'teacherBoardSummaries', docId)
+    const summarySnap = await getDoc(summaryRef)
+
+    if (summarySnap.exists() && !forceRegenerate) {
+      aiAnnouncement.value = summarySnap.data().content
+      isLoading.value = false
+      return
+    }
+
+    if (!isLoggedIn.value) {
+      aiAnnouncement.value = "아직 해당 학급의 담임 선생님께서 전달사항을 등록하지 않으셨습니다. 😊"
+      isLoading.value = false
+      return
+    }
+
+    // 💡 1. 전체 학생 DB 로드
+    if (studentStore.students.length === 0) await studentStore.fetchStudents()
+    const allStudents = studentStore.students
+
+    // 💡 2. 선택된 반 학생 목록 및 동명이인 찾기
+    const targetStudents = allStudents.filter(s => String(s.grade) === String(viewGrade.value) && String(s.class) === String(viewClass.value))
+    const nameCounts = {}
+    targetStudents.forEach(s => { nameCounts[s.name] = (nameCounts[s.name] || 0) + 1 })
+    const duplicateNames = Object.keys(nameCounts).filter(name => nameCounts[name] > 1)
+
+    const logYear = info.logTargetDate.getFullYear()
+    const logMonth = info.logTargetDate.getMonth()
+    const logDay = info.logTargetDate.getDate()
+
+    const q = query(collection(db, 'workLogs'), where('tags', 'array-contains-any', ['#조종례', '#조회', '#종례']))
+    const snap = await getDocs(q)
+    
+    const rawLogs = snap.docs
+      .map(d => d.data())
+      .filter(log => {
+        if (!log.tags) return false
+        const isRelevant = info.morningMode 
+          ? (log.tags.includes('#조종례') || log.tags.includes('#조회'))
+          : (log.tags.includes('#조종례') || log.tags.includes('#종례'))
+        if (!isRelevant) return false
+        if (log.tags.includes('#고정')) return true
+
+        if (!log.createdAt) return false
+        const logDate = new Date(log.createdAt)
+        return logDate.getFullYear() === logYear && logDate.getMonth() === logMonth && logDate.getDate() === logDay
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+
+    // 💡 3. 스마트 분배 시스템 적용 (타 학급 배제)
+    let finalLogs = []
+    let allMentionedTargets = new Set()
+
+    rawLogs.forEach(log => {
+      let content = log.content
+      const mentionedAny = allStudents.filter(s => s.name.length >= 2 && content.includes(s.name))
+      
+      if (mentionedAny.length > 0) {
+        const mentionedTarget = targetStudents.filter(s => s.name.length >= 2 && content.includes(s.name))
+        
+        if (mentionedTarget.length === 0) return 
+
+        mentionedTarget.forEach(s => {
+          allMentionedTargets.add(s.name)
+          if (duplicateNames.includes(s.name)) {
+            const regex = new RegExp(`${s.name}(?!\\(동명이인\\))`, 'g')
+            content = content.replace(regex, `${s.name}(동명이인)`)
+          }
+        })
+        finalLogs.push({ ...log, content })
+      } else {
+        finalLogs.push(log)
+      }
+    })
+
+    if (finalLogs.length === 0) {
+      aiAnnouncement.value = "선생님, 오늘 전달할 특별한 공지사항이 없습니다.\n오늘 하루도 수고 많으셨습니다! 😊"
+      isLoading.value = false
+      isRegenerating.value = false
+      return
+    }
+
+    const logTexts = finalLogs.map(log => `- ${log.tags.includes('#고정') ? '[고정] ' : ''}${log.content}`).join('\n')
+    let prompt = getTeacherBoardPrompt(info.morningMode, logTexts) 
+    
+    if (allMentionedTargets.size > 0) {
+      prompt += `\n\n[⚠️ 중요 필터링 지시사항]\n현재 학급(${viewGrade.value}학년 ${viewClass.value}반) 소속인 [${Array.from(allMentionedTargets).join(', ')}] 학생과 관련된 내용만 추출하세요. 타 학급 학생의 이름이나 그 학생에 대한 지시사항이 섞여 있다면 절대 출력하지 마세요.`
+    }
+    prompt += `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요.`
+
+    const result = await aiService.askStructured(prompt, announcementSchema)
+    
+    let finalContent = `${result.announcement}\n\n${result.closing}`
+    finalContent = finalContent.replace(/\\n/g, '\n').replace(/<br\s*\/?>/gi, '\n')
+    
+    aiAnnouncement.value = finalContent
+
+    await setDoc(summaryRef, { 
+      content: finalContent, 
+      updatedAt: new Date().toISOString() 
+    }, { merge: true }) 
+
+  } catch (error) {
+    console.error("AI 요약 에러:", error)
+    aiAnnouncement.value = "공지사항을 동기화하는 중 오류가 발생했습니다."
+  } finally {
+    isLoading.value = false
+    isRegenerating.value = false
+  }
+}
+
+const copyToClipboard = () => {
+  navigator.clipboard.writeText(`[${boardTitle.value}]\n\n${aiAnnouncement.value}`).then(() => {
+    alert('📋 내용이 복사되었습니다. 메신저에 붙여넣기 하세요!')
+  })
+}
+
+onMounted(() => { loadBoardContent(false) })
+</script>
+
+<template>
+  <div class="min-h-screen bg-gray-50 flex flex-col items-center py-6 px-4 font-sans">
+    
+    <div class="w-full max-w-3xl">
+      
+      <div class="flex justify-center mb-8">
+        <div class="bg-white px-4 py-3 rounded-2xl shadow-sm border border-gray-200 flex items-center gap-2 sm:gap-3">
+          <span class="text-sm font-bold text-gray-500 hidden sm:inline">학급 선택:</span>
+          
+          <select v-model="viewGrade" class="border border-gray-300 text-gray-700 rounded-lg text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none py-1.5 pl-3 pr-8 bg-gray-50">
+            <option v-for="n in grades" :key="n" :value="n">{{ n }}학년</option>
+          </select>
+          
+          <select v-model="viewClass" class="border border-gray-300 text-gray-700 rounded-lg text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none py-1.5 pl-3 pr-8 bg-gray-50">
+            <option v-for="n in classes" :key="n" :value="n">{{ n }}반</option>
+          </select>
+          
+          <button @click="loadBoardContent(false)" class="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm whitespace-nowrap">
+            조회
+          </button>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-4 px-2 gap-4">
+        <div>
+            <h2 class="text-2xl font-black text-gray-800">👨‍🏫 담임 교사용 조종례 브리핑</h2>
+            <p class="text-sm text-gray-500 font-bold mt-1">담임 선생님이 우리 반 전달사항을 한눈에 파악할 수 있도록 정리해 드립니다.</p>
+        </div>
+        
+        <div class="flex gap-2">
+          <button v-if="isLoggedIn" @click="loadBoardContent(true)" :disabled="isLoading || isRegenerating" class="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-bold shadow-sm hover:bg-gray-100 disabled:opacity-50 transition-colors">
+            <span :class="{'animate-spin inline-block': isRegenerating}">🔄</span> 갱신
+          </button>
+          
+          <button @click="copyToClipboard" class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-indigo-700 transition-colors flex items-center gap-1.5">
+            📋 메신저 복사
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+        
+        <div class="p-5 sm:p-6 border-b border-gray-100 flex items-center gap-3 bg-gray-50/50">
+          <span class="text-3xl">{{ isMorningMode ? '☀️' : '🌙' }}</span>
+          <h1 class="text-lg sm:text-xl font-black text-gray-800 tracking-tight">{{ boardTitle }}</h1>
+        </div>
+
+        <div class="p-6 sm:p-8 min-h-[300px] flex flex-col justify-center">
+          
+          <div v-if="isLoading || isRegenerating" class="flex flex-col items-center justify-center text-gray-400 space-y-4">
+            <div class="w-10 h-10 border-4 border-gray-200 border-t-indigo-500 rounded-full animate-spin"></div>
+            <p class="text-sm font-bold">안내문을 불러오고 있습니다...</p>
+          </div>
+
+          <div v-else class="text-[15px] sm:text-[16px] text-gray-700 leading-[1.8] whitespace-pre-wrap font-medium">
+            {{ aiAnnouncement }}
+          </div>
+
+        </div>
+      </div>
+      
+    </div>
+  </div>
+</template>
+
+<style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@500;700;900&display=swap');
+.font-sans { font-family: 'Pretendard', sans-serif; }
+</style>

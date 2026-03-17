@@ -5,6 +5,7 @@ import Homeroom from '../views/Homeroom.vue'
 import SeatArrangement from '../views/SeatArrangement.vue'
 import WorkLog from '../views/WorkLog.vue'
 import StudentBoard from '../views/StudentBoard.vue'
+import TeacherBoard from '../views/TeacherBoard.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -16,6 +17,7 @@ const router = createRouter({
     { path: '/seats', name: 'SeatArrangement', component: SeatArrangement, meta: { requiresAuth: true } },
     { path: '/worklog', name: 'WorkLog', component: WorkLog, meta: { requiresAuth: true } },
     { path: '/board', name: 'StudentBoard', component: StudentBoard },
+    { path: '/teacher-board', name: 'TeacherBoard', component: TeacherBoard },
     {
       path: '/guide',
       name: 'Guide',

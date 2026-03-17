@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useWorkStore } from '../stores/workStore'
 import { storeToRefs } from 'pinia'
+import AiTagGenerator from '../components/AiTagGenerator.vue'
 
 const workStore = useWorkStore()
 const { logs, allUniqueTags } = storeToRefs(workStore)
@@ -10,19 +11,57 @@ onMounted(() => {
   workStore.fetchLogs()
 })
 
+// === 💡 1. 학교 부서 관리 (전근 시 수정 가능하게 localStorage 연동) ===
+const defaultDepartments = [
+  '교무부', '연구부', '교육과정부', '건강환경교육부', '진로특수부', 
+  '방과후교육부', '행정실', '학년부', '생활안전복지부', '급식실', '교장', '교감'
+]
+const departments = ref(JSON.parse(localStorage.getItem('mySchoolDepartments')) || defaultDepartments)
+
+const showDeptModal = ref(false)
+const newDeptName = ref('')
+
+const addDepartment = () => {
+  const dept = newDeptName.value.trim()
+  if (dept && !departments.value.includes(dept)) {
+    departments.value.push(dept)
+    saveDepartments()
+  }
+  newDeptName.value = ''
+}
+
+const removeDepartment = (index) => {
+  departments.value.splice(index, 1)
+  saveDepartments()
+}
+
+const saveDepartments = () => {
+  localStorage.setItem('mySchoolDepartments', JSON.stringify(departments.value))
+}
+// ==============================================================
+
 const logContent = ref('')
 const isEditMode = ref(false)
 const editingId = ref(null)
 
-// 💡 텍스트에서 태그 추출 (URL의 #gid 등은 무시하도록 정규식 개선!)
 const extractTags = (text) => {
   if (!text) return []
-  // 반드시 문장 시작이거나 공백 뒤에 오는 '#'만 찾습니다.
   const matches = text.match(/(^|\s)#[^\s#]+/g)
   return matches ? [...new Set(matches.map(m => m.trim()))] : []
 }
 
 const currentTags = computed(() => extractTags(logContent.value))
+
+const handleAiTagsGenerated = (tags) => {
+  if (!tags || tags.length === 0) return
+  const formattedTags = tags.map(t => `#${t}`).join(' ')
+  
+  if (logContent.value.trim() === '') {
+    logContent.value = formattedTags
+  } else {
+    logContent.value = `${logContent.value.trim()}\n\n${formattedTags}`
+  }
+}
 
 const saveLog = async () => {
   if (logContent.value.trim() === '') {
@@ -66,28 +105,22 @@ const deleteLog = async (id) => {
 // === 검색 및 필터링 상태 ===
 const selectedTag = ref('')
 const searchQuery = ref('') 
-const isTagAreaOpen = ref(false) // 💡 태그창 펼침/숨김 상태 (기본은 닫힘)
+const isTagAreaOpen = ref(false)
 
 const toggleTagFilter = (tag) => {
-  if (selectedTag.value === tag) {
-    selectedTag.value = '' 
-  } else {
-    selectedTag.value = tag
-  }
+  if (selectedTag.value === tag) selectedTag.value = '' 
+  else selectedTag.value = tag
 }
 
 const filteredLogs = computed(() => {
   let result = logs.value
-
   if (selectedTag.value) {
     result = result.filter(log => log.tags && log.tags.includes(selectedTag.value))
   }
-
   if (searchQuery.value.trim() !== '') {
     const query = searchQuery.value.toLowerCase()
     result = result.filter(log => log.content.toLowerCase().includes(query))
   }
-
   return result
 })
 
@@ -107,16 +140,65 @@ const formatContentWithLinks = (text) => {
 </script>
 
 <template>
-  <div class="w-full">
-    <h2 class="text-2xl font-bold text-gray-800 mb-6">📁 업무 일지</h2>
+  <div class="w-full relative">
+    
+    <div v-if="showDeptModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+        <h3 class="text-lg font-bold text-gray-800 mb-2">⚙️ 우리 학교 부서 설정</h3>
+        <p class="text-xs text-gray-500 mb-4 bg-gray-50 p-2 rounded border border-gray-200">
+          학교마다 다른 부서 명칭을 자유롭게 추가/삭제하세요. AI가 업무 일지를 읽고 여기에 등록된 부서 이름을 자동으로 태그해 줍니다.
+        </p>
+
+        <div class="flex gap-2 mb-4">
+          <input 
+            v-model="newDeptName" 
+            @keyup.enter="addDepartment"
+            type="text" 
+            placeholder="새 부서명 (예: 창의체험부)" 
+            class="flex-1 p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold"
+          />
+          <button @click="addDepartment" class="px-3 py-2 bg-blue-600 text-white text-sm font-bold rounded hover:bg-blue-700">추가</button>
+        </div>
+
+        <div class="flex flex-wrap gap-2 max-h-[40vh] overflow-y-auto custom-scrollbar p-1">
+          <div v-for="(dept, index) in departments" :key="dept" class="flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 border border-gray-300 text-gray-700 text-sm rounded-full font-bold">
+            {{ dept }}
+            <button @click="removeDepartment(index)" class="text-red-400 hover:text-red-600 font-black ml-1">&times;</button>
+          </div>
+        </div>
+
+        <div class="mt-6 flex justify-end">
+          <button @click="showDeptModal = false" class="px-4 py-2 bg-gray-800 text-white font-bold rounded-lg text-sm hover:bg-gray-900 shadow-sm">
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <header class="flex justify-between items-center mb-6">
+      <h2 class="text-2xl font-bold text-gray-800">📁 업무 일지</h2>
+      
+      <button @click="showDeptModal = true" class="px-3 py-1.5 bg-white border border-gray-300 text-gray-600 text-sm font-bold rounded-lg hover:bg-gray-50 shadow-sm transition-colors flex items-center gap-1.5">
+        ⚙️ 부서 관리
+      </button>
+    </header>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       
       <div class="lg:col-span-1">
         <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 sticky top-6">
-          <h3 class="font-bold text-lg mb-4 text-gray-700 flex justify-between items-center">
-            <span>{{ isEditMode ? '✏️ 일지 수정' : '📝 새 업무 작성' }}</span>
-          </h3>
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="font-bold text-lg text-gray-700">
+              {{ isEditMode ? '✏️ 일지 수정' : '📝 새 업무 작성' }}
+            </h3>
+            
+            <AiTagGenerator 
+              :content="logContent" 
+              :existingTags="allUniqueTags" 
+              :departments="departments"
+              @tags-generated="handleAiTagsGenerated"
+            />
+          </div>
           
           <textarea 
             v-model="logContent" 
@@ -142,9 +224,7 @@ const formatContentWithLinks = (text) => {
       </div>
 
       <div class="lg:col-span-2 flex flex-col gap-6">
-        
         <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 space-y-4">
-          
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-2">🔍 내용 검색</label>
             <input 
