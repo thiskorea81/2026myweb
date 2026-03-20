@@ -65,6 +65,11 @@ const loadBoardContent = async (forceRegenerate = false) => {
     
     const docId = `${viewGrade.value}_${viewClass.value}_${info.documentId}`
     const summaryRef = doc(db, 'teacherBoardSummaries', docId)
+    
+    // 💡 교사용 보드 전용 공통 AI 캐시 저장소 (COMMON_TEACHER_날짜)
+    const commonDocId = `COMMON_TEACHER_${info.documentId}`
+    const commonSummaryRef = doc(db, 'teacherBoardSummaries', commonDocId)
+
     const summarySnap = await getDoc(summaryRef)
 
     if (summarySnap.exists() && !forceRegenerate) {
@@ -110,8 +115,8 @@ const loadBoardContent = async (forceRegenerate = false) => {
       })
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 
-    let finalLogs = []
-    let allMentionedTargets = new Set()
+    const commonLogs = []
+    const myClassLogs = []
 
     rawLogs.forEach(log => {
       let content = log.content
@@ -119,69 +124,64 @@ const loadBoardContent = async (forceRegenerate = false) => {
       
       if (mentionedAny.length > 0) {
         const mentionedTarget = targetStudents.filter(s => s.name.length >= 2 && content.includes(s.name))
-        if (mentionedTarget.length === 0) return 
-
-        mentionedTarget.forEach(s => {
-          allMentionedTargets.add(s.name)
-          if (duplicateNames.includes(s.name)) {
-            const regex = new RegExp(`${s.name}(?!\\(동명이인\\))`, 'g')
-            content = content.replace(regex, `${s.name}(동명이인)`)
-          }
-        })
-        finalLogs.push({ ...log, content })
+        if (mentionedTarget.length > 0) {
+          mentionedTarget.forEach(s => {
+            if (duplicateNames.includes(s.name)) {
+              const regex = new RegExp(`${s.name}(?!\\(동명이인\\))`, 'g')
+              content = content.replace(regex, `${s.name}(동명이인)`)
+            }
+          })
+          myClassLogs.push({ ...log, content })
+        }
       } else {
-        finalLogs.push(log)
+        commonLogs.push(log)
       }
     })
 
-    if (finalLogs.length === 0) {
-      aiAnnouncement.value = "선생님, 오늘 전달할 특별한 공지사항이 없습니다.\n오늘 하루도 수고 많으셨습니다! 😊"
-      isLoading.value = false
-      isRegenerating.value = false
-      return
+    // 💡 교사용 보드 공통 공지사항 AI 처리 및 캐싱
+    let commonAnnouncementText = ""
+    let commonClosingText = ""
+    const commonSnap = await getDoc(commonSummaryRef)
+
+    if (commonSnap.exists() && !forceRegenerate) {
+       commonAnnouncementText = commonSnap.data().announcement
+       commonClosingText = commonSnap.data().closing
+    } else {
+       if (commonLogs.length > 0) {
+          const logTexts = commonLogs.map(l => `- ${l.tags.includes('#고정') ? '[고정] ' : ''}${l.content}`).join('\n')
+          const prompt = getTeacherBoardPrompt(info.morningMode, logTexts) + `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요.`
+          const result = await aiService.askStructured(prompt, announcementSchema)
+          commonAnnouncementText = result.announcement
+          commonClosingText = result.closing
+          await setDoc(commonSummaryRef, { announcement: commonAnnouncementText, closing: commonClosingText, updatedAt: new Date().toISOString() }, { merge: true })
+       } else {
+          commonAnnouncementText = "선생님, 오늘 전달할 전체 공지사항이 없습니다."
+          commonClosingText = "오늘 하루도 수고 많으셨습니다! 😊"
+       }
     }
 
-    // 💡 1. 큐(Queue) 분류 시스템 적용
-    const priorQueue = []
-    const normalQueue = []
-
-    finalLogs.forEach(log => {
-      const text = log.content.trim()
-      if (log.tags.includes('#고정') || log.tags.includes('#중요')) {
-        priorQueue.push(text)
-      } else {
-        normalQueue.push(text)
-      }
-    })
-
-    let logTexts = ''
-    if (priorQueue.length > 0) {
-      logTexts += '🚨 [우선/중요 전달사항]\n'
-      priorQueue.forEach((item, index) => logTexts += `${index + 1}. ${item}\n`)
-      logTexts += '\n'
-    }
-    if (normalQueue.length > 0) {
-      logTexts += '📌 [일반 전달사항]\n'
-      normalQueue.forEach((item, index) => logTexts += `${index + 1}. ${item}\n`)
+    // 💡 우리 반 알림 + 공통 공지사항 조립 (스마트 병합)
+    let finalContent = ''
+    if (myClassLogs.length > 0) {
+       finalContent += `🏫 [우리 반 알림]\n`
+       myClassLogs.forEach((l, i) => {
+          finalContent += `${i + 1}. ${l.content}\n`
+       })
+       finalContent += `\n`
     }
 
-    // 💡 2. 담임 교사용 AI 프롬프트에 전달하여 전문적으로 다듬기
-    let prompt = getTeacherBoardPrompt(info.morningMode, logTexts) 
+    if (commonLogs.length > 0) {
+       finalContent += `📢 [전체 공지]\n${commonAnnouncementText}\n\n`
+    } else if (myClassLogs.length === 0) {
+       finalContent += `📢 [전체 공지]\n전달할 공지사항이 없습니다.\n\n`
+    }
     
-    if (allMentionedTargets.size > 0) {
-      prompt += `\n\n[⚠️ 중요 필터링 지시사항]\n현재 학급(${viewGrade.value}학년 ${viewClass.value}반) 소속인 [${Array.from(allMentionedTargets).join(', ')}] 학생과 관련된 내용만 추출하세요. 타 학급 학생의 이름이나 그 학생에 대한 지시사항이 섞여 있다면 절대 출력하지 마세요.`
-    }
-    prompt += `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요.\n- 제공된 [우선/중요 전달사항]과 [일반 전달사항]의 구조를 유지하면서 담임교사가 읽기 좋은 브리핑 형식으로 다듬어주세요.`
+    finalContent += `${commonClosingText}`
 
-    const result = await aiService.askStructured(prompt, announcementSchema)
-    
-    let finalContent = `${result.announcement}\n\n${result.closing}`
-    finalContent = finalContent.replace(/\\n/g, '\n').replace(/<br\s*\/?>/gi, '\n')
-    
-    aiAnnouncement.value = finalContent
+    aiAnnouncement.value = finalContent.trim()
 
     await setDoc(summaryRef, { 
-      content: finalContent, 
+      content: finalContent.trim(), 
       updatedAt: new Date().toISOString() 
     }, { merge: true }) 
 

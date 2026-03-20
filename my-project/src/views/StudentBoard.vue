@@ -69,6 +69,10 @@ const loadBoardContent = async (forceRegenerate = false) => {
     const info = getBoardInfo()
     isMorningMode.value = info.morningMode
     const summaryRef = doc(db, 'boardSummaries', info.documentId)
+    
+    // 💡 전교 공통 사항을 캐싱할 글로벌 문서 ID 생성 (예: COMMON_2026-03-21_0730)
+    const commonDocId = `COMMON_${info.documentId.split('_').slice(-2).join('_')}`
+    const commonSummaryRef = doc(db, 'boardSummaries', commonDocId)
 
     const summarySnap = await getDoc(summaryRef)
     if (summarySnap.exists()) {
@@ -118,8 +122,8 @@ const loadBoardContent = async (forceRegenerate = false) => {
       })
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 
-    let finalLogs = []
-    let allMentionedTargets = new Set()
+    const commonLogs = []
+    const myClassLogs = []
     
     rawLogs.forEach(log => {
       let content = log.content
@@ -127,77 +131,74 @@ const loadBoardContent = async (forceRegenerate = false) => {
       
       if (mentionedAny.length > 0) {
         const mentionedTarget = targetStudents.filter(s => s.name.length >= 2 && content.includes(s.name))
-        if (mentionedTarget.length === 0) return 
-
-        mentionedTarget.forEach(s => {
-          allMentionedTargets.add(s.name)
-          if (duplicateNames.includes(s.name)) {
-            const regex = new RegExp(`${s.name}(?!\\(동명이인\\))`, 'g')
-            content = content.replace(regex, `${s.name}(동명이인)`)
-          }
-        })
-        finalLogs.push({ ...log, content })
+        // 우리 반 학생이 있으면 myClassLogs에 추가 (AI 번역 생략)
+        if (mentionedTarget.length > 0) {
+          mentionedTarget.forEach(s => {
+            if (duplicateNames.includes(s.name)) {
+              const regex = new RegExp(`${s.name}(?!\\(동명이인\\))`, 'g')
+              content = content.replace(regex, `${s.name}(동명이인)`)
+            }
+          })
+          myClassLogs.push({ ...log, content })
+        }
       } else {
-        finalLogs.push(log)
+        // 학생 이름이 아예 없으면 commonLogs에 추가
+        commonLogs.push(log)
       }
     })
 
-    if (finalLogs.length === 0) {
-      aiAnnouncement.value = info.morningMode ? "전달할 공지사항이 없습니다.\n오늘 하루도 화이팅! ☀️" : "전달할 공지사항이 없습니다.\n안전하게 하교하세요! 👋"
-      isLoading.value = false
-      isRegenerating.value = false
-      return
+    // 💡 공통 공지사항 AI 처리 (이미 캐싱되어 있으면 가져오기만 함 -> API 비용 0원!)
+    let commonAnnouncementText = ""
+    let commonClosingText = ""
+    const commonSnap = await getDoc(commonSummaryRef)
+
+    if (commonSnap.exists() && !forceRegenerate) {
+       commonAnnouncementText = commonSnap.data().announcement
+       commonClosingText = commonSnap.data().closing
+    } else {
+       if (commonLogs.length > 0) {
+          const logTexts = commonLogs.map(l => `- ${l.tags.includes('#고정') ? '[고정] ' : ''}${l.content}`).join('\n')
+          const prompt = getBoardPrompt(info.morningMode, logTexts) + `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요. 대괄호([]) 금지.`
+          const result = await aiService.askStructured(prompt, announcementSchema)
+          commonAnnouncementText = result.announcement
+          commonClosingText = result.closing
+          await setDoc(commonSummaryRef, { announcement: commonAnnouncementText, closing: commonClosingText, updatedAt: new Date().toISOString() }, { merge: true })
+       } else {
+          commonAnnouncementText = "전달할 전체 공지사항이 없습니다."
+          commonClosingText = info.morningMode ? "오늘 하루도 화이팅! ☀️" : "안전하게 하교하세요! 👋"
+       }
     }
 
-    // 💡 1. 큐(Queue) 분류 시스템 적용
-    const priorQueue = []
-    const normalQueue = []
-
-    finalLogs.forEach(log => {
-      const text = log.content.trim()
-      if (log.tags.includes('#고정') || log.tags.includes('#중요')) {
-        priorQueue.push(text)
-      } else {
-        normalQueue.push(text)
-      }
-    })
-
-    let logTexts = ''
-    if (priorQueue.length > 0) {
-      logTexts += '🔥 [중요/우선 공지]\n'
-      priorQueue.forEach((item, index) => logTexts += `${index + 1}. ${item}\n`)
-      logTexts += '\n'
-    }
-    if (normalQueue.length > 0) {
-      logTexts += '📢 [일반 안내]\n'
-      normalQueue.forEach((item, index) => logTexts += `${index + 1}. ${item}\n`)
+    // 💡 우리 반 알림 + 공통 공지사항 조립 (스마트 병합)
+    let finalContent = ''
+    if (myClassLogs.length > 0) {
+       finalContent += `🏫 [우리 반 알림]\n`
+       myClassLogs.forEach((l, i) => {
+          finalContent += `${i + 1}. ${l.content}\n`
+       })
+       finalContent += `\n`
     }
 
-    // 💡 2. 분류된 큐를 AI에게 넘겨 예쁘게 번역(포맷팅) 지시
-    let prompt = getBoardPrompt(info.morningMode, logTexts) 
+    if (commonLogs.length > 0) {
+       finalContent += `📢 [전체 공지]\n${commonAnnouncementText}\n\n`
+    } else if (myClassLogs.length === 0) {
+       finalContent += `📢 [전체 공지]\n전달할 공지사항이 없습니다.\n\n`
+    }
     
-    if (allMentionedTargets.size > 0) {
-      prompt += `\n\n[⚠️ 중요 필터링 지시사항]\n현재 학급(${viewGrade.value}학년 ${viewClass.value}반) 소속인 [${Array.from(allMentionedTargets).join(', ')}] 학생과 관련된 내용만 추출하세요. 타 학급 학생의 이름이나 그 학생에 대한 지시사항이 섞여 있다면 절대 출력하지 마세요.`
-    }
-    prompt += `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요. 대괄호([]) 금지.\n- 제공된 [중요/우선 공지]와 [일반 안내]의 구조와 기호를 유지하면서, 학생들이 읽기 편한 부드러운 말투로 다듬어주세요.`
+    finalContent += `${commonClosingText}`
 
-    const result = await aiService.askStructured(prompt, announcementSchema)
-    
-    let finalContent = `${result.announcement}\n\n${result.closing}`
-    finalContent = finalContent.replace(/\\n/g, '\n').replace(/<br\s*\/?>/gi, '\n')
-    
-    aiAnnouncement.value = finalContent
+    aiAnnouncement.value = finalContent.trim()
     
     const newEntry = {
       id: Date.now(),
-      content: finalContent,
-      type: '🤖 AI 자동 업데이트',
+      content: finalContent.trim(),
+      type: '🤖 스마트 병합 (공통AI + 우리반)',
       timestamp: new Date().toISOString()
     }
     boardHistory.value.push(newEntry)
 
     await setDoc(summaryRef, { 
-      content: finalContent, 
+      content: finalContent.trim(), 
       history: boardHistory.value,
       updatedAt: new Date().toISOString() 
     }, { merge: true }) 
@@ -289,7 +290,7 @@ onMounted(() => { loadBoardContent(false) })
         <div class="p-6 overflow-y-auto flex-1 bg-gray-100 flex flex-col gap-4">
           <div v-for="hist in [...boardHistory].reverse()" :key="hist.id" class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-              <span class="text-sm font-bold" :class="hist.type.includes('AI') ? 'text-blue-600' : (hist.type.includes('복구') ? 'text-amber-600' : 'text-teal-600')">
+              <span class="text-sm font-bold" :class="hist.type.includes('AI') || hist.type.includes('병합') ? 'text-blue-600' : (hist.type.includes('복구') ? 'text-amber-600' : 'text-teal-600')">
                 {{ hist.type }} <span class="text-gray-400 font-medium text-xs ml-2">{{ new Date(hist.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}) }}</span>
               </span>
               <button @click="restoreHistory(hist)" class="px-3 py-1.5 bg-gray-800 text-white rounded-lg text-xs font-bold hover:bg-black transition-colors shrink-0">
