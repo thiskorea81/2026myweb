@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import { aiService } from '../services/aiService'
+import { aiService } from '../services/aiService' 
 import { announcementSchema, getBoardPrompt } from '../services/aiPrompts' 
 import { useStudentStore } from '../stores/studentStore'
 
@@ -20,11 +20,9 @@ const showHistoryModal = ref(false)
 
 const isLoggedIn = computed(() => localStorage.getItem('isLoggedIn') === 'true')
 
-// 💡 조회할 학년/반 상태 (기본값은 본인 학급)
 const viewGrade = ref(localStorage.getItem('myGrade') || '1')
 const viewClass = ref(localStorage.getItem('myClass') || '1')
 
-// 💡 1~3학년, 1~9반 배열
 const grades = [1, 2, 3]
 const classes = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
@@ -55,7 +53,6 @@ const getBoardInfo = () => {
   }
 
   const dateString = `${targetDbDate.getFullYear()}-${String(targetDbDate.getMonth()+1).padStart(2,'0')}-${String(targetDbDate.getDate()).padStart(2,'0')}`
-  // 💡 선택된 학년과 반을 문서 ID에 포함하여 데이터 완벽 분리
   const documentId = `${viewGrade.value}_${viewClass.value}_${dateString}_${epochKey}` 
 
   let logTargetDate = new Date(targetDbDate)
@@ -83,7 +80,6 @@ const loadBoardContent = async (forceRegenerate = false) => {
       }
     } else {
       boardHistory.value = []
-      // 💡 생성된 게 없고 강제 재생성도 아니면 기본 메시지 출력 후 종료 (다른 반을 조회했을 때 덮어쓰기 방지)
       if (!forceRegenerate && !isLoggedIn.value) {
         aiAnnouncement.value = isMorningMode.value ? "아직 오늘 아침 공지사항이 없습니다.\n오늘 하루도 화이팅! ☀️" : "아직 오후 공지사항이 없습니다.\n안전하게 하교하세요! 👋"
         isLoading.value = false
@@ -114,7 +110,7 @@ const loadBoardContent = async (forceRegenerate = false) => {
           ? (log.tags.includes('#조종례') || log.tags.includes('#조회'))
           : (log.tags.includes('#조종례') || log.tags.includes('#종례'))
         if (!isRelevant) return false
-        if (log.tags.includes('#고정')) return true
+        if (log.tags.includes('#고정') || log.tags.includes('#중요')) return true
 
         if (!log.createdAt) return false
         const logDate = new Date(log.createdAt)
@@ -124,14 +120,13 @@ const loadBoardContent = async (forceRegenerate = false) => {
 
     let finalLogs = []
     let allMentionedTargets = new Set()
-
+    
     rawLogs.forEach(log => {
       let content = log.content
       const mentionedAny = allStudents.filter(s => s.name.length >= 2 && content.includes(s.name))
       
       if (mentionedAny.length > 0) {
         const mentionedTarget = targetStudents.filter(s => s.name.length >= 2 && content.includes(s.name))
-        
         if (mentionedTarget.length === 0) return 
 
         mentionedTarget.forEach(s => {
@@ -154,13 +149,37 @@ const loadBoardContent = async (forceRegenerate = false) => {
       return
     }
 
-    const logTexts = finalLogs.map(log => `- ${log.tags.includes('#고정') ? '[고정] ' : ''}${log.content}`).join('\n')
+    // 💡 1. 큐(Queue) 분류 시스템 적용
+    const priorQueue = []
+    const normalQueue = []
+
+    finalLogs.forEach(log => {
+      const text = log.content.trim()
+      if (log.tags.includes('#고정') || log.tags.includes('#중요')) {
+        priorQueue.push(text)
+      } else {
+        normalQueue.push(text)
+      }
+    })
+
+    let logTexts = ''
+    if (priorQueue.length > 0) {
+      logTexts += '🔥 [중요/우선 공지]\n'
+      priorQueue.forEach((item, index) => logTexts += `${index + 1}. ${item}\n`)
+      logTexts += '\n'
+    }
+    if (normalQueue.length > 0) {
+      logTexts += '📢 [일반 안내]\n'
+      normalQueue.forEach((item, index) => logTexts += `${index + 1}. ${item}\n`)
+    }
+
+    // 💡 2. 분류된 큐를 AI에게 넘겨 예쁘게 번역(포맷팅) 지시
     let prompt = getBoardPrompt(info.morningMode, logTexts) 
     
     if (allMentionedTargets.size > 0) {
       prompt += `\n\n[⚠️ 중요 필터링 지시사항]\n현재 학급(${viewGrade.value}학년 ${viewClass.value}반) 소속인 [${Array.from(allMentionedTargets).join(', ')}] 학생과 관련된 내용만 추출하세요. 타 학급 학생의 이름이나 그 학생에 대한 지시사항이 섞여 있다면 절대 출력하지 마세요.`
     }
-    prompt += `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요. 대괄호([]) 금지.`
+    prompt += `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요. 대괄호([]) 금지.\n- 제공된 [중요/우선 공지]와 [일반 안내]의 구조와 기호를 유지하면서, 학생들이 읽기 편한 부드러운 말투로 다듬어주세요.`
 
     const result = await aiService.askStructured(prompt, announcementSchema)
     
@@ -184,7 +203,7 @@ const loadBoardContent = async (forceRegenerate = false) => {
     }, { merge: true }) 
 
   } catch (error) {
-    console.error("AI 요약 에러:", error)
+    console.error("데이터 로드 에러:", error)
     aiAnnouncement.value = "공지사항을 동기화하는 중 오류가 발생했습니다."
   } finally {
     isLoading.value = false
@@ -290,7 +309,6 @@ onMounted(() => { loadBoardContent(false) })
           @click="showHistoryModal = true" 
           :disabled="isLoading || isRegenerating"
           class="flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 bg-gray-50 border border-gray-200 text-gray-600 rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-gray-100 transition-all disabled:opacity-50"
-          title="과거 업데이트 내역 확인"
         >
           🕒 지난 기록
         </button>
@@ -298,7 +316,6 @@ onMounted(() => { loadBoardContent(false) })
           @click="startEditing" 
           :disabled="isLoading || isRegenerating"
           class="flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-indigo-100 transition-all disabled:opacity-50"
-          title="직접 수정"
         >
           ✏️ 직접 수정
         </button>
@@ -306,7 +323,6 @@ onMounted(() => { loadBoardContent(false) })
           @click="loadBoardContent(true)" 
           :disabled="isLoading || isRegenerating"
           class="flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-800 rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-white hover:shadow-md transition-all disabled:opacity-50"
-          title="최신 메모 불러오기"
         >
           <span :class="{'animate-spin': isRegenerating}">🔄</span>
           {{ isRegenerating ? '업데이트 중...' : '메모 불러오기' }}

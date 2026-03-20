@@ -2,9 +2,9 @@
 import { ref, onMounted, computed } from 'vue'
 import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import { aiService } from '../services/aiService'
+import { aiService } from '../services/aiService' 
 import { announcementSchema, getTeacherBoardPrompt } from '../services/aiPrompts'
-import { useStudentStore } from '../stores/studentStore' // 💡 학생 DB 연동
+import { useStudentStore } from '../stores/studentStore' 
 
 const studentStore = useStudentStore()
 const isLoggedIn = computed(() => localStorage.getItem('isLoggedIn') === 'true')
@@ -79,11 +79,9 @@ const loadBoardContent = async (forceRegenerate = false) => {
       return
     }
 
-    // 💡 1. 전체 학생 DB 로드
     if (studentStore.students.length === 0) await studentStore.fetchStudents()
     const allStudents = studentStore.students
 
-    // 💡 2. 선택된 반 학생 목록 및 동명이인 찾기
     const targetStudents = allStudents.filter(s => String(s.grade) === String(viewGrade.value) && String(s.class) === String(viewClass.value))
     const nameCounts = {}
     targetStudents.forEach(s => { nameCounts[s.name] = (nameCounts[s.name] || 0) + 1 })
@@ -104,7 +102,7 @@ const loadBoardContent = async (forceRegenerate = false) => {
           ? (log.tags.includes('#조종례') || log.tags.includes('#조회'))
           : (log.tags.includes('#조종례') || log.tags.includes('#종례'))
         if (!isRelevant) return false
-        if (log.tags.includes('#고정')) return true
+        if (log.tags.includes('#고정') || log.tags.includes('#중요')) return true
 
         if (!log.createdAt) return false
         const logDate = new Date(log.createdAt)
@@ -112,7 +110,6 @@ const loadBoardContent = async (forceRegenerate = false) => {
       })
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 
-    // 💡 3. 스마트 분배 시스템 적용 (타 학급 배제)
     let finalLogs = []
     let allMentionedTargets = new Set()
 
@@ -122,7 +119,6 @@ const loadBoardContent = async (forceRegenerate = false) => {
       
       if (mentionedAny.length > 0) {
         const mentionedTarget = targetStudents.filter(s => s.name.length >= 2 && content.includes(s.name))
-        
         if (mentionedTarget.length === 0) return 
 
         mentionedTarget.forEach(s => {
@@ -145,13 +141,37 @@ const loadBoardContent = async (forceRegenerate = false) => {
       return
     }
 
-    const logTexts = finalLogs.map(log => `- ${log.tags.includes('#고정') ? '[고정] ' : ''}${log.content}`).join('\n')
+    // 💡 1. 큐(Queue) 분류 시스템 적용
+    const priorQueue = []
+    const normalQueue = []
+
+    finalLogs.forEach(log => {
+      const text = log.content.trim()
+      if (log.tags.includes('#고정') || log.tags.includes('#중요')) {
+        priorQueue.push(text)
+      } else {
+        normalQueue.push(text)
+      }
+    })
+
+    let logTexts = ''
+    if (priorQueue.length > 0) {
+      logTexts += '🚨 [우선/중요 전달사항]\n'
+      priorQueue.forEach((item, index) => logTexts += `${index + 1}. ${item}\n`)
+      logTexts += '\n'
+    }
+    if (normalQueue.length > 0) {
+      logTexts += '📌 [일반 전달사항]\n'
+      normalQueue.forEach((item, index) => logTexts += `${index + 1}. ${item}\n`)
+    }
+
+    // 💡 2. 담임 교사용 AI 프롬프트에 전달하여 전문적으로 다듬기
     let prompt = getTeacherBoardPrompt(info.morningMode, logTexts) 
     
     if (allMentionedTargets.size > 0) {
       prompt += `\n\n[⚠️ 중요 필터링 지시사항]\n현재 학급(${viewGrade.value}학년 ${viewClass.value}반) 소속인 [${Array.from(allMentionedTargets).join(', ')}] 학생과 관련된 내용만 추출하세요. 타 학급 학생의 이름이나 그 학생에 대한 지시사항이 섞여 있다면 절대 출력하지 마세요.`
     }
-    prompt += `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요.`
+    prompt += `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요.\n- 제공된 [우선/중요 전달사항]과 [일반 전달사항]의 구조를 유지하면서 담임교사가 읽기 좋은 브리핑 형식으로 다듬어주세요.`
 
     const result = await aiService.askStructured(prompt, announcementSchema)
     
@@ -166,7 +186,7 @@ const loadBoardContent = async (forceRegenerate = false) => {
     }, { merge: true }) 
 
   } catch (error) {
-    console.error("AI 요약 에러:", error)
+    console.error("데이터 로드 에러:", error)
     aiAnnouncement.value = "공지사항을 동기화하는 중 오류가 발생했습니다."
   } finally {
     isLoading.value = false
