@@ -4,7 +4,7 @@ import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase
 import { db } from '../firebase'
 import { useStudentStore } from '../stores/studentStore'
 import { useAiNoteStore } from '../stores/aiNoteStore'
-import { aiService } from '../services/aiService' // 💡 최신 공통 서비스 임포트
+import { aiService } from '../services/aiService'
 
 const isOpen = ref(false)
 const userInput = ref('')
@@ -13,7 +13,7 @@ const chatContainer = ref(null)
 
 const defaultWelcome = { 
   role: 'model', 
-  text: '안녕하세요 선생님! 학생 이름을 말해주시면 기본 정보부터 출결, 상담, 성적까지 종합해서 분석해 드려요. 유용한 답변은 공식 상담기록과 분리된 [🤖 AI 노트]에 따로 저장해 둘 수 있답니다! 😊' 
+  text: '안녕하세요 선생님! 학생 이름을 말해주시면 기본 정보부터 출결, 상담, 성적, 교과 세특, 그리고 동아리 활동 내역까지 종합해서 분석해 드려요. 유용한 답변은 [🤖 AI 노트]에 따로 저장해 둘 수 있답니다! 😊' 
 }
 
 const chatHistory = ref([defaultWelcome])
@@ -98,15 +98,60 @@ const sendMessage = async () => {
 
     if (matchedStudent) {
       matchedStudentInfo = matchedStudent 
+      
+      // 1. 상담 기록 스캔
       const counselQuery = query(collection(db, 'counselingLogs'), where('studentId', '==', matchedStudent.id))
       const counselSnap = await getDocs(counselQuery)
       const counselLogs = counselSnap.docs.map(d => d.data())
 
+      // 2. 출결 기록 스캔
       const attQuery = query(collection(db, 'attendanceLogs'), where('studentId', '==', matchedStudent.id))
       const attSnap = await getDocs(attQuery)
       const attLogs = attSnap.docs.map(d => d.data())
 
+      // 3. 교과 수업(세특) 기록 스캔
+      const subjectQuery = query(collection(db, 'subjectRecords'), where('studentId', '==', matchedStudent.studentId))
+      const subjectSnap = await getDocs(subjectQuery)
+      const subjectLogs = subjectSnap.docs.map(d => d.data())
+      
+      let subjectContext = ''
+      if (subjectLogs.length > 0) {
+        const grouped = {}
+        subjectLogs.forEach(l => {
+          if (!grouped[l.subject]) grouped[l.subject] = []
+          grouped[l.subject].push(`(${l.date}) ${l.content}`)
+        })
+        for (const [subj, logs] of Object.entries(grouped)) {
+          subjectContext += `\n    - [${subj}] ${logs.join(' / ')}`
+        }
+      }
+
+      // 💡 4. 동아리 활동 기록 스캔 추가!
+      // (동아리 정보는 studentStore 안에 내장되어 있으므로 최신 DB 데이터를 한 번 더 가져옵니다)
+      const studentDocSnap = await getDoc(doc(db, 'students', matchedStudent.id))
+      let clubContext = ''
+      if (studentDocSnap.exists()) {
+        const sData = studentDocSnap.data()
+        // 동아리 기본 정보
+        if (sData.clubRole || sData.motivation || sData.specialty) {
+          clubContext += `\n    - [기본정보] 역할: ${sData.clubRole || '없음'}, 특기: ${sData.specialty || '없음'}, 동기: ${sData.motivation || '없음'}`
+        }
+        // 동아리 활동 내역 배열 (clubActivities)
+        if (sData.clubActivities && sData.clubActivities.length > 0) {
+          const actLogs = sData.clubActivities.map(a => `(${a.date}) [${a.title}] ${a.content}`).join(' / ')
+          clubContext += `\n    - [활동내역] ${actLogs}`
+        }
+      }
+
+      // 종합 컨텍스트 조립
       contextStr += `\n\n[학급 데이터 컨텍스트]\n- 학생: ${matchedStudent.name} (${matchedStudent.studentId})\n- 진로: ${matchedStudent.career}\n- 장단점: ${matchedStudent.goodPoint}/${matchedStudent.badPoint}\n- 성적: ${JSON.stringify(matchedStudent.grades || [])}\n- 최근상담: ${counselLogs.map(l => l.content).join('; ')}\n- 출결: ${attLogs.map(l => l.type).join(', ')}`
+      
+      if (subjectContext) {
+         contextStr += `\n- 교과 수업(세특) 기록:${subjectContext}`
+      }
+      if (clubContext) {
+         contextStr += `\n- 동아리 활동 기록:${clubContext}`
+      }
     }
 
     if (originalPrompt.includes('#업무')) {
@@ -117,7 +162,6 @@ const sendMessage = async () => {
 
     const finalPrompt = contextStr ? `${originalPrompt}\n\n${contextStr}` : originalPrompt
 
-    // 💡 최신 aiService.askText 사용 (내부적으로 ai.models.generateContent 호출)
     const aiResponse = await aiService.askText(finalPrompt)
     
     chatHistory.value.push({ 
@@ -142,7 +186,7 @@ const sendMessage = async () => {
 </script>
 
 <template>
-  <div class="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+  <div class="fixed bottom-6 right-6 z-50 flex flex-col items-end print:hidden">
     <div 
       v-if="isOpen" 
       class="bg-white w-[350px] sm:w-[450px] rounded-2xl shadow-2xl border border-gray-200 flex flex-col mb-4 overflow-hidden h-[600px]"
@@ -150,8 +194,8 @@ const sendMessage = async () => {
       <div class="bg-blue-600 text-white p-4 flex justify-between items-center">
         <div class="font-bold flex items-center gap-2">✨ AI 업무 비서</div>
         <div class="flex items-center gap-3">
-          <button @click="clearChat" class="text-xs bg-blue-700 px-2 py-1 rounded font-bold">초기화</button>
-          <button @click="isOpen = false" class="text-xl leading-none">&times;</button>
+          <button @click="clearChat" class="text-xs bg-blue-700 px-2 py-1 rounded font-bold hover:bg-blue-800 transition-colors">초기화</button>
+          <button @click="isOpen = false" class="text-2xl leading-none hover:text-gray-200">&times;</button>
         </div>
       </div>
 
@@ -163,7 +207,7 @@ const sendMessage = async () => {
         >
           <p class="whitespace-pre-wrap">{{ chat.text }}</p>
           <div v-if="chat.role === 'model' && chat.matchedStudentId" class="mt-3 pt-3 border-t border-gray-100 flex justify-end">
-            <button v-if="!chat.isSaved" @click="saveToAiNote(chat)" class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg font-bold border border-indigo-200 transition-colors">
+            <button v-if="!chat.isSaved" @click="saveToAiNote(chat)" class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg font-bold border border-indigo-200 transition-colors hover:bg-indigo-100">
               💾 {{ chat.matchedStudentName }} AI 노트에 저장
             </button>
             <span v-else class="text-xs text-green-600 font-bold">✅ AI 노트에 저장됨</span>
@@ -176,11 +220,11 @@ const sendMessage = async () => {
 
       <div class="p-3 bg-white border-t border-gray-200 flex gap-2">
         <input v-model="userInput" type="text" placeholder="학생 이름이나 #업무 질문..." class="flex-1 p-2 border rounded-lg text-sm outline-none focus:border-blue-500" @keyup.enter="sendMessage" :disabled="isLoading" />
-        <button @click="sendMessage" :disabled="isLoading" class="bg-blue-600 text-white px-3 py-2 rounded-lg font-bold">전송</button>
+        <button @click="sendMessage" :disabled="isLoading" class="bg-blue-600 text-white px-3 py-2 rounded-lg font-bold hover:bg-blue-700 transition-colors">전송</button>
       </div>
     </div>
 
-    <button @click="isOpen = !isOpen" class="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:scale-105 transition-all flex items-center justify-center text-2xl border-4 border-white">
+    <button @click="isOpen = !isOpen" class="w-14 h-14 bg-blue-600 text-white rounded-full shadow-[0_4px_14px_0_rgba(79,70,229,0.4)] hover:scale-105 transition-all flex items-center justify-center text-2xl border-4 border-white hover:-translate-y-1 duration-300">
       {{ isOpen ? '✖' : '🤖' }}
     </button>
   </div>
