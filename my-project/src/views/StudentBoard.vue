@@ -6,6 +6,10 @@ import { aiService } from '../services/aiService'
 import { announcementSchema, getBoardPrompt } from '../services/aiPrompts' 
 import { useStudentStore } from '../stores/studentStore'
 
+// 💡 분리된 컴포넌트 불러오기
+import BoardHistoryModal from '../components/board/BoardHistoryModal.vue'
+import BoardDisplay from '../components/board/BoardDisplay.vue'
+
 const studentStore = useStudentStore()
 
 const aiAnnouncement = ref('')
@@ -70,7 +74,6 @@ const loadBoardContent = async (forceRegenerate = false) => {
     isMorningMode.value = info.morningMode
     const summaryRef = doc(db, 'boardSummaries', info.documentId)
     
-    // 💡 전교 공통 사항을 캐싱할 글로벌 문서 ID 생성 (예: COMMON_2026-03-21_0730)
     const commonDocId = `COMMON_${info.documentId.split('_').slice(-2).join('_')}`
     const commonSummaryRef = doc(db, 'boardSummaries', commonDocId)
 
@@ -131,7 +134,6 @@ const loadBoardContent = async (forceRegenerate = false) => {
       
       if (mentionedAny.length > 0) {
         const mentionedTarget = targetStudents.filter(s => s.name.length >= 2 && content.includes(s.name))
-        // 우리 반 학생이 있으면 myClassLogs에 추가 (AI 번역 생략)
         if (mentionedTarget.length > 0) {
           mentionedTarget.forEach(s => {
             if (duplicateNames.includes(s.name)) {
@@ -142,12 +144,10 @@ const loadBoardContent = async (forceRegenerate = false) => {
           myClassLogs.push({ ...log, content })
         }
       } else {
-        // 학생 이름이 아예 없으면 commonLogs에 추가
         commonLogs.push(log)
       }
     })
 
-    // 💡 공통 공지사항 AI 처리 (이미 캐싱되어 있으면 가져오기만 함 -> API 비용 0원!)
     let commonAnnouncementText = ""
     let commonClosingText = ""
     const commonSnap = await getDoc(commonSummaryRef)
@@ -169,7 +169,6 @@ const loadBoardContent = async (forceRegenerate = false) => {
        }
     }
 
-    // 💡 우리 반 알림 + 공통 공지사항 조립 (스마트 병합)
     let finalContent = ''
     if (myClassLogs.length > 0) {
        finalContent += `🏫 [우리 반 알림]\n`
@@ -281,28 +280,12 @@ onMounted(() => { loadBoardContent(false) })
 <template>
   <div class="min-h-screen flex flex-col items-center p-2 md:p-4 bg-gray-100 relative">
     
-    <div v-if="showHistoryModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
-      <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden shadow-2xl">
-        <div class="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-          <h3 class="text-xl font-black text-gray-800">🕒 업데이트 기록 (버전 복구)</h3>
-          <button @click="showHistoryModal = false" class="text-3xl font-bold text-gray-400 hover:text-red-500 leading-none">&times;</button>
-        </div>
-        <div class="p-6 overflow-y-auto flex-1 bg-gray-100 flex flex-col gap-4">
-          <div v-for="hist in [...boardHistory].reverse()" :key="hist.id" class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-              <span class="text-sm font-bold" :class="hist.type.includes('AI') || hist.type.includes('병합') ? 'text-blue-600' : (hist.type.includes('복구') ? 'text-amber-600' : 'text-teal-600')">
-                {{ hist.type }} <span class="text-gray-400 font-medium text-xs ml-2">{{ new Date(hist.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}) }}</span>
-              </span>
-              <button @click="restoreHistory(hist)" class="px-3 py-1.5 bg-gray-800 text-white rounded-lg text-xs font-bold hover:bg-black transition-colors shrink-0">
-                이 버전으로 덮어쓰기
-              </button>
-            </div>
-            <p class="text-[15px] text-gray-800 whitespace-pre-wrap font-medium leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100">{{ hist.content }}</p>
-          </div>
-          <div v-if="boardHistory.length === 0" class="text-center text-gray-400 font-bold py-10">저장된 업데이트 기록이 없습니다.</div>
-        </div>
-      </div>
-    </div>
+    <BoardHistoryModal 
+      :show="showHistoryModal" 
+      :history="boardHistory" 
+      @close="showHistoryModal = false"
+      @restore="restoreHistory"
+    />
 
     <div v-if="isLoggedIn" class="absolute top-4 right-4 z-50 flex flex-wrap justify-end items-center gap-2">
       <template v-if="!isEditing">
@@ -364,40 +347,16 @@ onMounted(() => { loadBoardContent(false) })
         </div>
       </div>
 
-      <div class="bg-white w-full rounded-2xl md:rounded-[40px] shadow-2xl overflow-hidden border-4 md:border-[6px] border-white ring-1 ring-gray-200 font-sans">
-        
-        <div class="p-6 md:p-10 text-center transition-colors duration-700" :class="isMorningMode ? 'bg-gradient-to-br from-orange-400 to-red-500' : 'bg-gradient-to-br from-indigo-600 to-blue-800'">
-          <h1 class="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-black text-white tracking-tighter drop-shadow-md">
-            {{ boardTitle }}
-          </h1>
-          <p class="mt-2 md:mt-6 text-white/90 text-sm sm:text-base md:text-xl lg:text-2xl font-bold opacity-80">
-            {{ boardSubtitle }}
-          </p>
-        </div>
-
-        <div class="p-6 sm:p-8 md:p-16 lg:p-20 min-h-[300px] md:min-h-[500px] flex flex-col justify-center relative bg-gray-50 bg-[linear-gradient(transparent_47px,#e5e7eb_48px)] bg-[length:100%_48px]">
-          
-          <div v-if="isLoading || isRegenerating" class="flex flex-col items-center justify-center text-gray-400 space-y-4 md:space-y-6">
-            <div class="w-10 h-10 md:w-16 md:h-16 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>
-            <p class="text-lg md:text-2xl font-black bg-white/80 px-4 py-2 md:px-6 rounded-full shadow-sm text-center">AI가 최신 공지사항을<br class="md:hidden"> 정리하고 있습니다...</p>
-          </div>
-
-          <div v-else-if="!isEditing" class="relative z-10 text-xl sm:text-2xl md:text-4xl lg:text-5xl text-gray-800 leading-[1.6] md:leading-[1.7] whitespace-pre-wrap font-black font-sans px-2 md:px-4 tracking-tight drop-shadow-sm">
-            {{ aiAnnouncement }}
-          </div>
-
-          <textarea 
-            v-else 
-            v-model="editableContent"
-            class="relative z-20 w-full min-h-[300px] md:min-h-[400px] p-6 text-xl sm:text-2xl md:text-4xl lg:text-5xl text-gray-800 leading-[1.6] md:leading-[1.7] font-black font-sans tracking-tight bg-white/90 border-2 border-indigo-400 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-200 resize-none shadow-inner"
-            placeholder="여기에 내용을 입력하세요..."
-          ></textarea>
-          
-          <div class="absolute bottom-4 right-4 md:bottom-8 md:right-8 text-6xl md:text-9xl opacity-10 select-none pointer-events-none">
-            {{ isMorningMode ? '☀️' : '🌙' }}
-          </div>
-        </div>
-      </div>
+      <BoardDisplay 
+        :title="boardTitle"
+        :subtitle="boardSubtitle"
+        :content="aiAnnouncement"
+        :isLoading="isLoading || isRegenerating"
+        :isEditing="isEditing"
+        :isMorningMode="isMorningMode"
+        v-model="editableContent"
+      />
+      
     </div>
   </div>
 </template>
