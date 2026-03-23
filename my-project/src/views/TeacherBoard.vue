@@ -2,9 +2,9 @@
 import { ref, onMounted, computed } from 'vue'
 import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import { aiService } from '../services/aiService'
+import { aiService } from '../services/aiService' 
 import { announcementSchema, getTeacherBoardPrompt } from '../services/aiPrompts'
-import { useStudentStore } from '../stores/studentStore' // 💡 학생 DB 연동
+import { useStudentStore } from '../stores/studentStore' 
 
 const studentStore = useStudentStore()
 const isLoggedIn = computed(() => localStorage.getItem('isLoggedIn') === 'true')
@@ -65,6 +65,11 @@ const loadBoardContent = async (forceRegenerate = false) => {
     
     const docId = `${viewGrade.value}_${viewClass.value}_${info.documentId}`
     const summaryRef = doc(db, 'teacherBoardSummaries', docId)
+    
+    // 💡 교사용 보드 전용 공통 AI 캐시 저장소 (COMMON_TEACHER_날짜)
+    const commonDocId = `COMMON_TEACHER_${info.documentId}`
+    const commonSummaryRef = doc(db, 'teacherBoardSummaries', commonDocId)
+
     const summarySnap = await getDoc(summaryRef)
 
     if (summarySnap.exists() && !forceRegenerate) {
@@ -79,11 +84,9 @@ const loadBoardContent = async (forceRegenerate = false) => {
       return
     }
 
-    // 💡 1. 전체 학생 DB 로드
     if (studentStore.students.length === 0) await studentStore.fetchStudents()
     const allStudents = studentStore.students
 
-    // 💡 2. 선택된 반 학생 목록 및 동명이인 찾기
     const targetStudents = allStudents.filter(s => String(s.grade) === String(viewGrade.value) && String(s.class) === String(viewClass.value))
     const nameCounts = {}
     targetStudents.forEach(s => { nameCounts[s.name] = (nameCounts[s.name] || 0) + 1 })
@@ -104,7 +107,7 @@ const loadBoardContent = async (forceRegenerate = false) => {
           ? (log.tags.includes('#조종례') || log.tags.includes('#조회'))
           : (log.tags.includes('#조종례') || log.tags.includes('#종례'))
         if (!isRelevant) return false
-        if (log.tags.includes('#고정')) return true
+        if (log.tags.includes('#고정') || log.tags.includes('#중요')) return true
 
         if (!log.createdAt) return false
         const logDate = new Date(log.createdAt)
@@ -112,9 +115,8 @@ const loadBoardContent = async (forceRegenerate = false) => {
       })
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 
-    // 💡 3. 스마트 분배 시스템 적용 (타 학급 배제)
-    let finalLogs = []
-    let allMentionedTargets = new Set()
+    const commonLogs = []
+    const myClassLogs = []
 
     rawLogs.forEach(log => {
       let content = log.content
@@ -122,51 +124,69 @@ const loadBoardContent = async (forceRegenerate = false) => {
       
       if (mentionedAny.length > 0) {
         const mentionedTarget = targetStudents.filter(s => s.name.length >= 2 && content.includes(s.name))
-        
-        if (mentionedTarget.length === 0) return 
-
-        mentionedTarget.forEach(s => {
-          allMentionedTargets.add(s.name)
-          if (duplicateNames.includes(s.name)) {
-            const regex = new RegExp(`${s.name}(?!\\(동명이인\\))`, 'g')
-            content = content.replace(regex, `${s.name}(동명이인)`)
-          }
-        })
-        finalLogs.push({ ...log, content })
+        if (mentionedTarget.length > 0) {
+          mentionedTarget.forEach(s => {
+            if (duplicateNames.includes(s.name)) {
+              const regex = new RegExp(`${s.name}(?!\\(동명이인\\))`, 'g')
+              content = content.replace(regex, `${s.name}(동명이인)`)
+            }
+          })
+          myClassLogs.push({ ...log, content })
+        }
       } else {
-        finalLogs.push(log)
+        commonLogs.push(log)
       }
     })
 
-    if (finalLogs.length === 0) {
-      aiAnnouncement.value = "선생님, 오늘 전달할 특별한 공지사항이 없습니다.\n오늘 하루도 수고 많으셨습니다! 😊"
-      isLoading.value = false
-      isRegenerating.value = false
-      return
+    // 💡 교사용 보드 공통 공지사항 AI 처리 및 캐싱
+    let commonAnnouncementText = ""
+    let commonClosingText = ""
+    const commonSnap = await getDoc(commonSummaryRef)
+
+    if (commonSnap.exists() && !forceRegenerate) {
+       commonAnnouncementText = commonSnap.data().announcement
+       commonClosingText = commonSnap.data().closing
+    } else {
+       if (commonLogs.length > 0) {
+          const logTexts = commonLogs.map(l => `- ${l.tags.includes('#고정') ? '[고정] ' : ''}${l.content}`).join('\n')
+          const prompt = getTeacherBoardPrompt(info.morningMode, logTexts) + `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요.`
+          const result = await aiService.askStructured(prompt, announcementSchema)
+          commonAnnouncementText = result.announcement
+          commonClosingText = result.closing
+          await setDoc(commonSummaryRef, { announcement: commonAnnouncementText, closing: commonClosingText, updatedAt: new Date().toISOString() }, { merge: true })
+       } else {
+          commonAnnouncementText = "선생님, 오늘 전달할 전체 공지사항이 없습니다."
+          commonClosingText = "오늘 하루도 수고 많으셨습니다! 😊"
+       }
     }
 
-    const logTexts = finalLogs.map(log => `- ${log.tags.includes('#고정') ? '[고정] ' : ''}${log.content}`).join('\n')
-    let prompt = getTeacherBoardPrompt(info.morningMode, logTexts) 
-    
-    if (allMentionedTargets.size > 0) {
-      prompt += `\n\n[⚠️ 중요 필터링 지시사항]\n현재 학급(${viewGrade.value}학년 ${viewClass.value}반) 소속인 [${Array.from(allMentionedTargets).join(', ')}] 학생과 관련된 내용만 추출하세요. 타 학급 학생의 이름이나 그 학생에 대한 지시사항이 섞여 있다면 절대 출력하지 마세요.`
+    // 💡 우리 반 알림 + 공통 공지사항 조립 (스마트 병합)
+    let finalContent = ''
+    if (myClassLogs.length > 0) {
+       finalContent += `🏫 [우리 반 알림]\n`
+       myClassLogs.forEach((l, i) => {
+          finalContent += `${i + 1}. ${l.content}\n`
+       })
+       finalContent += `\n`
     }
-    prompt += `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요.`
 
-    const result = await aiService.askStructured(prompt, announcementSchema)
+    if (commonLogs.length > 0) {
+       finalContent += `📢 [전체 공지]\n${commonAnnouncementText}\n\n`
+    } else if (myClassLogs.length === 0) {
+       finalContent += `📢 [전체 공지]\n전달할 공지사항이 없습니다.\n\n`
+    }
     
-    let finalContent = `${result.announcement}\n\n${result.closing}`
-    finalContent = finalContent.replace(/\\n/g, '\n').replace(/<br\s*\/?>/gi, '\n')
-    
-    aiAnnouncement.value = finalContent
+    finalContent += `${commonClosingText}`
+
+    aiAnnouncement.value = finalContent.trim()
 
     await setDoc(summaryRef, { 
-      content: finalContent, 
+      content: finalContent.trim(), 
       updatedAt: new Date().toISOString() 
     }, { merge: true }) 
 
   } catch (error) {
-    console.error("AI 요약 에러:", error)
+    console.error("데이터 로드 에러:", error)
     aiAnnouncement.value = "공지사항을 동기화하는 중 오류가 발생했습니다."
   } finally {
     isLoading.value = false
