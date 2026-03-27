@@ -6,7 +6,6 @@ import { useCounselingStore } from '../stores/counselingStore'
 import { useAttendanceStore } from '../stores/attendanceStore'
 import { useAiNoteStore } from '../stores/aiNoteStore'
 
-// 💡 탭 컴포넌트들
 import StudentInfoTab from './StudentInfoTab.vue'
 import StudentCounselTab from './StudentCounselTab.vue'
 import StudentAttendanceTab from './StudentAttendanceTab.vue'
@@ -17,11 +16,10 @@ import StudentPrintLayout from './StudentPrintLayout.vue'
 
 const props = defineProps({
   student: { type: Object, required: true },
-  // 💡 이전/다음 이동을 위해 현재 필터링된 학생 전체 명단이 필요합니다.
   allStudents: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['close', 'update-student']) // 💡 학생 변경 이벤트를 추가합니다.
+const emit = defineEmits(['close', 'update-student']) 
 const activeTab = ref('info')
 
 const counselingStore = useCounselingStore()
@@ -32,7 +30,6 @@ const { logs: counselingLogs } = storeToRefs(counselingStore)
 const { logs: attendanceLogs } = storeToRefs(attendanceStore)
 const { notes: aiNotes } = storeToRefs(aiNoteStore)
 
-// 💡 학생이 바뀔 때마다 데이터를 새로 불러옵니다.
 watch(() => props.student, (newVal) => {
   if (newVal) {
     counselingStore.fetchLogs(newVal.id)
@@ -41,7 +38,6 @@ watch(() => props.student, (newVal) => {
   }
 }, { immediate: true })
 
-// 💡 이전/다음 학생 찾기 로직
 const currentIndex = computed(() => {
   return props.allStudents.findIndex(s => s.id === props.student.id)
 })
@@ -56,11 +52,9 @@ const nextStudent = computed(() => {
   return null
 })
 
-// 💡 학생 변경 핸들러
 const changeStudent = (targetStudent) => {
   if (!targetStudent) return
   emit('update-student', targetStudent)
-  // 탭 위치를 '학생 정보'나 '상담 기록'으로 유지하고 싶으시면 아래 activeTab은 그대로 두시면 됩니다.
 }
 
 const handlePrint = () => { window.print() }
@@ -74,9 +68,9 @@ const singlePrintData = computed(() => [{
 </script>
 
 <template>
-  <div class="modal-overlay fixed inset-0 bg-black/40 print:bg-transparent flex items-center justify-center z-50 p-4 print:p-0 print:static print:h-auto">
+  <div class="modal-overlay fixed inset-0 bg-black/40 print:bg-transparent flex items-start justify-center pt-8 md:pt-12 z-50 p-4 print:p-0 print:static print:h-auto">
     
-    <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden print:hidden">
+    <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] md:h-[90vh] flex flex-col overflow-hidden print:hidden">
       
       <div class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center shrink-0">
         <div class="flex items-center gap-6">

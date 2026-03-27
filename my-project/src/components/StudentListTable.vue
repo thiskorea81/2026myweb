@@ -47,14 +47,18 @@ const isAllSelected = computed({
             <td class="px-6 py-4 whitespace-nowrap">
               <input type="checkbox" :value="student.id" v-model="selectedIds" class="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer" />
             </td>
-            <td class="px-6 py-4 whitespace-nowrap text-gray-900 font-medium">{{ student.studentId }}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-gray-900 font-bold">{{ student.name }}</td>
+            <td @click="$emit('open-modal', student)" class="px-6 py-4 whitespace-nowrap text-gray-900 font-medium cursor-pointer hover:text-blue-600 hover:underline transition-colors">
+              {{ student.studentId }}
+            </td>
+            <td @click="$emit('open-modal', student)" class="px-6 py-4 whitespace-nowrap text-gray-900 font-bold cursor-pointer hover:text-blue-600 hover:underline transition-colors">
+              {{ student.name }}
+            </td>
             <td class="px-6 py-4 whitespace-nowrap text-gray-600">
               <span class="px-2 py-1 rounded-full text-xs" :class="student.gender === '남' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'">{{ student.gender }}</span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-gray-600">{{ student.phone }}</td>
             <td class="px-6 py-4 whitespace-nowrap text-center">
-              <button @click="$emit('open-modal', student)" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700">자세히</button>
+              <button @click="$emit('open-modal', student)" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700 transition-colors">자세히</button>
             </td>
           </tr>
           <tr v-if="students.length === 0">
