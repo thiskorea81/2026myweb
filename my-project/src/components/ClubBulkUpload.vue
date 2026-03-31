@@ -77,6 +77,7 @@ const handleDbUpload = async () => {
   }
 }
 
+// 💡 엑셀 스마트 파싱 및 유연한 헤더 매핑 로직 적용
 const handleExcelUpload = async () => {
   if (!rawData.value.trim()) {
     uploadStatus.value = '데이터를 먼저 붙여넣어 주세요.'
@@ -87,39 +88,67 @@ const handleExcelUpload = async () => {
   uploadStatus.value = '데이터를 분석하는 중...'
 
   try {
-    const lines = rawData.value.split('\n').filter(line => line.trim() !== '')
-    if (lines.length < 2) throw new Error("헤더와 데이터가 모두 필요합니다.")
+    // 💡 1. 엑셀 데이터 완벽 파싱 (따옴표 안의 줄바꿈 문자까지 정확히 처리)
+    const rows = []
+    let currentRow = []
+    let currentCell = ''
+    let insideQuotes = false
 
-    const headers = lines.split(/[,\t]/).map(h => h.trim().replace(/"/g, ''))
-    const requiredHeaders = ['학번', '이름']
-    
-    const missingHeaders = requiredHeaders.filter(rh => !headers.includes(rh))
-    if (missingHeaders.length > 0) {
-      uploadStatus.value = `필수 항목 누락: ${missingHeaders.join(', ')}`
-      isUploading.value = false
-      return
+    for (let i = 0; i < rawData.value.length; i++) {
+      const char = rawData.value[i]
+      const nextChar = rawData.value[i + 1]
+
+      if (char === '"') {
+        if (insideQuotes && nextChar === '"') {
+          currentCell += '"'
+          i++ // 이스케이프된 따옴표 건너뛰기
+        } else {
+          insideQuotes = !insideQuotes
+        }
+      } else if (char === '\t' && !insideQuotes) {
+        // 엑셀은 탭(\t)으로 열을 구분합니다.
+        currentRow.push(currentCell.trim())
+        currentCell = ''
+      } else if (char === '\n' && !insideQuotes) {
+        // 따옴표 바깥의 줄바꿈은 새로운 행을 의미합니다.
+        currentRow.push(currentCell.trim())
+        if (currentRow.some(c => c !== '')) rows.push(currentRow)
+        currentRow = []
+        currentCell = ''
+      } else if (char !== '\r' || insideQuotes) {
+        currentCell += char
+      }
+    }
+    // 마지막 행 밀어넣기
+    if (currentRow.some(c => c !== '')) {
+      currentRow.push(currentCell.trim())
+      rows.push(currentRow)
     }
 
-    const dataLines = lines.slice(1)
+    if (rows.length < 2) throw new Error("헤더와 데이터가 모두 필요합니다.")
+
+    // 💡 2. 유연한 헤더 이름 매핑
+    const headers = rows[0]
     const studentDataList = []
 
-    dataLines.forEach(line => {
-      const cols = line.split(/[,\t]/).map(c => c.trim().replace(/^"|"$/g, ''))
-      if (cols.length < 2) return
-
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i]
       const studentObj = {}
+
       headers.forEach((header, idx) => {
         const val = cols[idx] || ''
-        if (header === '학번') studentObj.studentId = val
-        else if (header === '이름') studentObj.name = val
-        else if (header === '성별') studentObj.gender = val
-        else if (header === '연락처') studentObj.phone = val
-        else if (header === '희망진로') studentObj.career = val
-        else if (header === '역할') studentObj.clubRole = val
-        else if (header === '지원동기') studentObj.motivation = val
-        else if (header === '특기') studentObj.specialty = val
+        // 키워드가 포함되어 있으면 알아서 매핑합니다.
+        if (header.includes('학번')) studentObj.studentId = val
+        else if (header.includes('이름') || header.includes('성명')) studentObj.name = val
+        else if (header.includes('성별')) studentObj.gender = val
+        else if (header.includes('연락처') || header.includes('휴대전화')) studentObj.phone = val
+        else if (header.includes('진로') || header.includes('학과')) studentObj.career = val
+        else if (header.includes('역할')) studentObj.clubRole = val
+        else if (header.includes('동기')) studentObj.motivation = val
+        else if (header.includes('특기') || header.includes('장점')) studentObj.specialty = val
       })
 
+      // 학번과 이름이 있는 정상적인 데이터만 통과
       if (studentObj.studentId && studentObj.name) {
         const globalData = globalStudentsMap.value[studentObj.studentId]
         if (globalData) {
@@ -131,7 +160,7 @@ const handleExcelUpload = async () => {
         studentObj.createdAt = new Date().toISOString()
         studentDataList.push(studentObj)
       }
-    })
+    }
 
     await clubStore.bulkUpload(studentDataList)
     uploadStatus.value = `성공! 총 ${studentDataList.length}명의 학생이 등록/업데이트 되었습니다.`
@@ -216,13 +245,14 @@ const handleExcelUpload = async () => {
     <div v-else>
       <p class="text-sm text-orange-800 mb-4 leading-relaxed font-bold">
         설문지로 받은 동아리 데이터를 붙여넣어 주세요. (학번, 이름 필수)<br>
-        <span class="text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">✨ 팁: 학번과 이름만 넣어도 전교생 DB에서 나머지 정보(학년,반,성별 등)를 자동으로 채워옵니다!</span>
+        <span class="text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">✨ 팁: 학번과 이름만 넣어도 전교생 DB에서 나머지 정보(학년,반,성별 등)를 자동으로 채워옵니다! 줄바꿈이 있는 글도 완벽하게 지원합니다.</span>
       </p>
       
       <div class="bg-white p-3 rounded border border-orange-200 mb-4 text-xs font-mono text-gray-800 overflow-x-auto whitespace-nowrap">
         <p class="font-bold mb-1 text-orange-900">📝 복사/붙여넣기 예시 (첫 줄 필수):</p>
-        학번, 이름, 역할, 지원동기, 특기<br>
-        10501, 김동아, 기장, 영상 제작이 좋아서, 프리미어 편집
+        학번, 이름, 성별, 휴대전화, 희망진로,학과, 역할, 지원동기, 특기<br>
+        10501, 김민찬, 남, 010-1234-5678, 컴퓨터공학과, 부장, "영상 제작이 좋아서<br>
+        이번에는 여러 가지 만들어 보고 싶습니다", 편집
       </div>
 
       <textarea 

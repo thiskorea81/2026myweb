@@ -10,13 +10,31 @@ export const useClubStore = defineStore('club', {
     async fetchClubStudents() {
       try {
         const snap = await getDocs(collection(db, 'clubStudents'))
-        this.clubStudents = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        const students = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
         
-        this.clubStudents.sort((a, b) => {
+        // 💡 직책별 가중치 부여 (낮을수록 상단)
+        const getRoleWeight = (role) => {
+          if (!role) return 3
+          if (role.includes('회장') || role.includes('부장')) return 1
+          if (role.includes('부회장') || role.includes('차장')) return 2
+          return 3
+        }
+
+        // 💡 정렬: 1순위 직책 가중치, 2순위 학번
+        students.sort((a, b) => {
+          const weightA = getRoleWeight(a.clubRole)
+          const weightB = getRoleWeight(b.clubRole)
+
+          if (weightA !== weightB) {
+            return weightA - weightB
+          }
+
           const idA = String(a.studentId || '99999') 
           const idB = String(b.studentId || '99999')
           return idA.localeCompare(idB, undefined, { numeric: true })
         })
+
+        this.clubStudents = students
       } catch (error) {
         console.error("동아리 학생 목록 불러오기 실패:", error)
       }
@@ -69,7 +87,6 @@ export const useClubStore = defineStore('club', {
       }
     },
 
-    // 💡 새롭게 추가된 동아리 활동 일괄 등록 로직
     async bulkUploadActivities(activityDataList) {
       try {
         const batch = writeBatch(db)
@@ -86,7 +103,6 @@ export const useClubStore = defineStore('club', {
             const studentData = studentSnap.data()
             let activities = studentData.clubActivities || []
 
-            // 새로운 활동 기록 추가
             activities.push({
               id: Date.now() + Math.random(),
               date: date || new Date().toISOString().split('T')[0],
