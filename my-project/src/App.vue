@@ -76,6 +76,7 @@ const navMenus = [
   { path: '/worklog', icon: '📓', name: '업무일지' },
   { path: '/board-admin', icon: '📋', name: '조종례 관리' },
   { path: '/admin', icon: '📊', name: '자율학습 관리' },
+  { path: '/tts', icon: '🗣️', name: '방송 TTS' }, // 💡 새 메뉴 추가 완료!
 ]
 </script>
 

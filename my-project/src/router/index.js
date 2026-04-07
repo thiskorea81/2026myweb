@@ -23,27 +23,22 @@ const router = createRouter({
       name: 'Guide',
       component: () => import('../views/Guide.vue')
     },
-    // 💡 새롭게 추가된 자율학습 신청 페이지 (학생용, 로그인 불필요)
     { 
       path: '/apply', 
       name: 'Apply', 
       component: () => import('../views/ApplyView.vue') 
     },
-    // 💡 새롭게 추가된 자율학습 관리자 페이지 (교사용, 로그인 필수)
     { 
       path: '/admin', 
       name: 'Admin', 
       component: () => import('../views/AdminView.vue'), 
-      
     },
-    // 💡 새롭게 추가된 조종례 게시판 라우트
     {
       path: '/board-admin',
       name: 'BoardAdmin',
       component: () => import('../views/BoardAdmin.vue'),
       meta: { requiresAuth: true }
     },
-
     {
       path: '/all-students',
       name: 'AllStudents',
@@ -57,27 +52,26 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-    path: '/career',
-    name: 'Career',
-    component: () => import('../views/Career.vue'),
-    meta: { requiresAuth: true }
+      path: '/career',
+      name: 'Career',
+      component: () => import('../views/Career.vue'),
+      meta: { requiresAuth: true }
     },
+    // 💡 새로 추가된 TTS 방송국 라우트
+    {
+      path: '/tts',
+      name: 'TtsTool',
+      component: () => import('../views/TtsView.vue'),
+      meta: { requiresAuth: true }
+    }
   ]
 })
 
-/**
- * 💡 네비게이션 가이드 (Navigation Guard)
- */
 router.beforeEach((to) => {
   const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
-  
-  // 인증이 필요한 페이지(requiresAuth: true)인데 로그인이 안 되어 있다면
   if (to.meta.requiresAuth && !isLoggedIn) {
-    // 목적지 주소를 로그인 페이지로 강제 변경합니다.
     return '/login'
   }
-  
-  // 조건에 걸리지 않으면 통과시킵니다.
   return true
 })
 
