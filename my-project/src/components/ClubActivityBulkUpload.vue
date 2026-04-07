@@ -17,15 +17,49 @@ const handleUpload = async () => {
   uploadStatus.value = '활동 기록을 분석하는 중...'
 
   try {
-    const lines = rawData.value.split('\n').filter(line => line.trim() !== '')
-    if (lines.length < 2) throw new Error("데이터가 부족합니다.")
+    // 💡 1. 엑셀 스마트 파서 적용 (따옴표, 탭, 줄바꿈 완벽 처리)
+    const rows = []
+    let currentRow = []
+    let currentCell = ''
+    let insideQuotes = false
 
-    const headers = lines[0].split(/[,\t]/).map(h => h.trim().replace(/"/g, ''))
-    
-    const idIdx = headers.findIndex(h => h === '학번')
-    const dateIdx = headers.findIndex(h => h === '날짜' || h === '활동일자')
-    const titleIdx = headers.findIndex(h => h === '활동명' || h === '주제')
-    const contentIdx = headers.findIndex(h => h === '내용' || h === '활동내용' || h === '느낀점')
+    for (let i = 0; i < rawData.value.length; i++) {
+      const char = rawData.value[i]
+      const nextChar = rawData.value[i + 1]
+
+      if (char === '"') {
+        if (insideQuotes && nextChar === '"') {
+          currentCell += '"'
+          i++ // 이스케이프된 따옴표 건너뛰기
+        } else {
+          insideQuotes = !insideQuotes
+        }
+      } else if (char === '\t' && !insideQuotes) {
+        currentRow.push(currentCell.trim())
+        currentCell = ''
+      } else if (char === '\n' && !insideQuotes) {
+        currentRow.push(currentCell.trim())
+        if (currentRow.some(c => c !== '')) rows.push(currentRow)
+        currentRow = []
+        currentCell = ''
+      } else if (char !== '\r' || insideQuotes) {
+        currentCell += char
+      }
+    }
+    // 마지막 행 밀어넣기
+    if (currentRow.some(c => c !== '')) {
+      currentRow.push(currentCell.trim())
+      rows.push(currentRow)
+    }
+
+    if (rows.length < 2) throw new Error("데이터가 부족합니다. (제목 줄과 데이터가 모두 필요합니다)")
+
+    // 💡 2. 유연한 헤더 매핑
+    const headers = rows[0]
+    const idIdx = headers.findIndex(h => h.includes('학번'))
+    const dateIdx = headers.findIndex(h => h.includes('날짜') || h.includes('일자'))
+    const titleIdx = headers.findIndex(h => h.includes('활동명') || h.includes('주제'))
+    const contentIdx = headers.findIndex(h => h.includes('내용') || h.includes('느낀점') || h.includes('활동내용'))
 
     if (idIdx === -1 || titleIdx === -1 || contentIdx === -1) {
       uploadStatus.value = "첫 줄에 '학번', '활동명', '내용' 열이 반드시 포함되어야 합니다!"
@@ -33,25 +67,27 @@ const handleUpload = async () => {
       return
     }
 
-    const dataLines = lines.slice(1)
     const activityDataList = []
 
-    dataLines.forEach(line => {
-      // 정규식으로 큰따옴표 안의 쉼표 무시하고 분리
-      const cols = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split('\t')
-      if (cols.length < 3) return
-
-      const cleanCol = (idx) => (cols[idx] || '').replace(/^"|"$/g, '').trim()
-
-      const studentId = cleanCol(idIdx)
-      const date = dateIdx > -1 ? cleanCol(dateIdx) : ''
-      const title = cleanCol(titleIdx)
-      const content = cleanCol(contentIdx)
+    // 💡 3. 데이터 추출 및 조립
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i]
+      
+      const studentId = cols[idIdx] || ''
+      const date = dateIdx > -1 ? cols[dateIdx] : ''
+      const title = cols[titleIdx] || ''
+      const content = cols[contentIdx] || ''
 
       if (studentId && title && content) {
         activityDataList.push({ studentId, date, title, content })
       }
-    })
+    }
+
+    if (activityDataList.length === 0) {
+      uploadStatus.value = "등록할 유효한 데이터가 없습니다. 양식을 확인해주세요."
+      isUploading.value = false
+      return
+    }
 
     const successCount = await clubStore.bulkUploadActivities(activityDataList)
     
