@@ -1,9 +1,9 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { collection, getDocs, doc, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
+import { getRoom } from '../utils/roomUtils'
 
-// 💡 관리자 로그인 상태 및 입력값
 const isAdminAuth = ref(false)
 const inputId = ref('')
 const inputPw = ref('')
@@ -11,11 +11,13 @@ const inputPw = ref('')
 const applications = ref([])
 const isLoading = ref(false)
 
-// 💡 관리자 로그인 처리 함수
+const currentTab = ref('전체')
+const tabs = ['전체', '1반실', '2반실', '3반실', '미배정']
+
 const handleAdminLogin = () => {
   if (inputId.value === 'admin' && inputPw.value === 'admin') {
     isAdminAuth.value = true
-    fetchApplications() // 로그인 성공 시에만 데이터 불러오기 시작
+    fetchApplications()
   } else {
     alert('아이디 또는 비밀번호가 일치하지 않습니다.')
     inputId.value = ''
@@ -23,15 +25,23 @@ const handleAdminLogin = () => {
   }
 }
 
-// 💡 데이터 불러오기
 const fetchApplications = async () => {
   isLoading.value = true
   try {
     const snap = await getDocs(collection(db, 'studyApplications'))
-    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const data = snap.docs.map(d => {
+      const appData = d.data()
+      const room = appData.room || getRoom(appData.studentId)
+      return { id: d.id, ...appData, room }
+    })
     
-    // 학번 순으로 정렬
-    data.sort((a, b) => String(a.studentId).localeCompare(String(b.studentId), undefined, { numeric: true }))
+    // 가장 최근에 업데이트된 내용이 먼저 보이도록 최신순 정렬
+    data.sort((a, b) => {
+      const dateA = new Date(a.updatedAt || 0)
+      const dateB = new Date(b.updatedAt || 0)
+      return dateB - dateA
+    })
+    
     applications.value = data
   } catch (error) {
     console.error("데이터 로드 에러:", error)
@@ -40,7 +50,11 @@ const fetchApplications = async () => {
   }
 }
 
-// 💡 개별 삭제 로직
+const filteredApplications = computed(() => {
+  if (currentTab.value === '전체') return applications.value
+  return applications.value.filter(app => app.room === currentTab.value)
+})
+
 const deleteRecord = async (id) => {
   if (!confirm('이 학생의 신청 내역을 삭제하시겠습니까?')) return
   try {
@@ -51,17 +65,17 @@ const deleteRecord = async (id) => {
   }
 }
 
-// 💡 CSV 다운로드 로직
 const downloadCSV = () => {
-  if (applications.value.length === 0) return alert('다운로드할 데이터가 없습니다.')
+  const dataToExport = currentTab.value === '전체' ? applications.value : filteredApplications.value
+  if (dataToExport.length === 0) return alert('다운로드할 데이터가 없습니다.')
   
-  const header = ['학번', '이름', '월8', '월야1', '월야2', '화8', '화야1', '화야2', '목8', '목야1', '목야2', '금8', '금야1', '금야2']
+  const header = ['배정교실', '학번', '이름', '월8', '월야1', '월야2', '화8', '화야1', '화야2', '목8', '목야1', '목야2', '금8', '금야1', '금야2']
   let csvContent = '\uFEFF' + header.join(',') + '\n'
 
   const keys = ['월8', '월야1', '월야2', '화8', '화야1', '화야2', '목8', '목야1', '목야2', '금8', '금야1', '금야2']
 
-  applications.value.forEach(item => {
-    const row = [item.studentId, item.name]
+  dataToExport.forEach(item => {
+    const row = [item.room, item.studentId, item.name]
     keys.forEach(k => {
       row.push(item.selection && item.selection[k] ? '1' : '')
     })
@@ -72,7 +86,7 @@ const downloadCSV = () => {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `자율학습신청현황_${new Date().toLocaleDateString()}.csv`
+  link.download = `자율학습신청현황_${currentTab.value}_${new Date().toLocaleDateString()}.csv`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -117,7 +131,7 @@ const downloadCSV = () => {
       <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
         <div>
           <h2 class="text-2xl sm:text-3xl font-black text-gray-800 tracking-tight">📊 자율학습 신청 관리</h2>
-          <p class="text-gray-500 mt-1">현재 총 <span class="font-bold text-blue-600">{{ applications.length }}</span>명 신청</p>
+          <p class="text-gray-500 mt-1">현재 총 <span class="font-bold text-blue-600">{{ filteredApplications.length }}</span>명 신청 ({{ currentTab }})</p>
         </div>
         
         <div class="flex gap-2">
@@ -130,6 +144,17 @@ const downloadCSV = () => {
         </div>
       </div>
 
+      <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
+        <button 
+          v-for="tab in tabs" 
+          :key="tab"
+          @click="currentTab = tab"
+          :class="['px-5 py-2 rounded-full font-bold whitespace-nowrap transition-all shadow-sm', currentTab === tab ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50']"
+        >
+          {{ tab }}
+        </button>
+      </div>
+
       <div v-if="isLoading" class="py-20 text-center text-gray-400">
         <div class="w-10 h-10 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
         데이터를 불러오는 중입니다...
@@ -140,6 +165,7 @@ const downloadCSV = () => {
           <table class="w-full text-sm text-left whitespace-nowrap">
             <thead class="bg-gray-50 text-gray-700 font-bold border-b border-gray-200">
               <tr>
+                <th class="px-6 py-4">교실</th>
                 <th class="px-6 py-4">학번</th>
                 <th class="px-6 py-4">이름</th>
                 <th class="px-6 py-4 text-center">신청 시간 합계</th>
@@ -148,10 +174,13 @@ const downloadCSV = () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-if="applications.length === 0">
-                <td colspan="5" class="px-6 py-12 text-center text-gray-500 font-medium">아직 신청한 학생이 없습니다.</td>
+              <tr v-if="filteredApplications.length === 0">
+                <td colspan="6" class="px-6 py-12 text-center text-gray-500 font-medium">선택한 그룹에 신청한 학생이 없습니다.</td>
               </tr>
-              <tr v-for="app in applications" :key="app.id" class="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
+              <tr v-for="app in filteredApplications" :key="app.id" class="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
+                <td class="px-6 py-4 font-bold text-gray-600">
+                  <span class="bg-gray-100 px-2 py-1 rounded-md">{{ app.room }}</span>
+                </td>
                 <td class="px-6 py-4 font-bold text-gray-800">{{ app.studentId }}</td>
                 <td class="px-6 py-4 font-bold text-blue-800">{{ app.name }}</td>
                 <td class="px-6 py-4 text-center">
