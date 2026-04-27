@@ -1,4 +1,6 @@
 <script setup>
+import { getOrderedScores } from '../utils/gradeUtils'
+
 defineProps({
   printDataList: { type: Array, required: true }
 })
@@ -46,7 +48,7 @@ const formatDate = (isoString) => {
         <div v-else class="space-y-3">
           <div v-for="grade in [...data.student.grades].reverse()" :key="grade.id" class="border border-gray-300 p-3 bg-gray-50 rounded">
             <div class="font-bold text-sm mb-2 text-indigo-900 border-l-4 border-indigo-500 pl-2">{{ grade.examName }}</div>
-            <div class="flex flex-wrap gap-x-5 gap-y-1 text-sm"><span v-for="(score, subject) in grade.scores" :key="subject"><span class="font-bold text-gray-600 bg-white border border-gray-200 px-1 rounded">{{ subject }}</span> <span class="font-bold ml-1">{{ score }}</span></span></div>
+            <div class="flex flex-wrap gap-x-5 gap-y-1 text-sm"><span v-for="item in getOrderedScores(grade.scores)" :key="item.label"><span class="font-bold text-gray-600 bg-white border border-gray-200 px-1 rounded">{{ item.label }}</span> <span class="font-bold ml-1">{{ item.score }}</span></span></div>
           </div>
         </div>
       </div>
