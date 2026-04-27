@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { collection, getDocs, doc, deleteDoc, setDoc, getDoc, writeBatch } from 'firebase/firestore'
+import { collection, getDocs, doc, deleteDoc, setDoc, getDoc, writeBatch, addDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { getRoom } from '../utils/roomUtils'
 import StudySeatGrid from '../components/StudySeatGrid.vue'
@@ -34,7 +34,7 @@ const currentDay = ref(getInitialDay())
 const currentCheckPeriod = ref(getInitialPeriod())
 // 탭은 슈퍼관리자일 때만 '과거 보관함' 포함
 const tabs = computed(() => {
-  const base = ['전체', '1반실', '2반실', '3반실', '4반실', '5반실', '미배정', '0타임', '결석 리포트']
+  const base = ['전체', '1반실', '2반실', '3반실', '4반실', '5반실', '미배정', '0타임', '결석 리포트', '📝 결석사유 관리']
   if (isSuperAdmin.value) base.push('📦 과거 보관함')
   return base
 })
@@ -44,6 +44,95 @@ const archivedData = ref([])        // 과거 보관함 데이터
 const archivedMonths = ref([])      // 보관된 월 목록 (드롭다운)
 const selectedArchiveMonth = ref('')
 const isArchiving = ref(false)
+
+// 결석 리포트 반별 필터 (실제 학급, 1~9반)
+const reportClassFilter = ref('전체')
+const reportRoomFilter = ref('전체')
+
+// 학생 결석 사유 신청 관리
+const absenceReasons = ref([])
+const absenceReasonDate = ref(new Date().toISOString().split('T')[0])
+const isLoadingReasons = ref(false)
+
+const fetchAbsenceReasons = async () => {
+  isLoadingReasons.value = true
+  try {
+    const snap = await getDocs(collection(db, 'studyAbsenceReasons'))
+    absenceReasons.value = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
+  } catch (e) {
+    console.error('결석 사유 로드 오류:', e)
+  } finally {
+    isLoadingReasons.value = false
+  }
+}
+
+const filteredReasons = computed(() => {
+  if (!absenceReasonDate.value) return absenceReasons.value
+  return absenceReasons.value.filter(r => r.date === absenceReasonDate.value)
+})
+
+const pendingCount = computed(() =>
+  absenceReasons.value.filter(r => !r.confirmed).length
+)
+
+const confirmReason = async (reasonDoc) => {
+  try {
+    await updateDoc(doc(db, 'studyAbsenceReasons', reasonDoc.id), { confirmed: true })
+    const idx = absenceReasons.value.findIndex(r => r.id === reasonDoc.id)
+    if (idx !== -1) absenceReasons.value[idx].confirmed = true
+  } catch (e) {
+    alert('확정 실패')
+  }
+}
+
+const updateTeacherNote = async (reasonDoc, note) => {
+  try {
+    await updateDoc(doc(db, 'studyAbsenceReasons', reasonDoc.id), { teacherNote: note })
+    const idx = absenceReasons.value.findIndex(r => r.id === reasonDoc.id)
+    if (idx !== -1) absenceReasons.value[idx].teacherNote = note
+  } catch (e) {
+    console.error('비고 저장 실패:', e)
+  }
+}
+
+// 학번에서 실제 학급 번호 추출 (5자리: 10401 → 4반, 10301 → 3반)
+const getClassFromId = (studentId) => {
+  const id = String(studentId)
+  if (id.length === 5) return id[2]   // 3번째 자리 = 학급
+  if (id.length === 4) return id[1]   // 4자리 패턴 호환
+  return '?'
+}
+
+// 결석 학생에 상담 로그 저장
+const savingCounsel = ref(false)
+const savedStudentIds = ref(new Set())
+
+const saveCounselForAbsent = async (app) => {
+  if (savingCounsel.value) return
+  const absentTimes = (reportAttendance.value[app.studentId] || []).join(', ')
+  const content = `[자율학습 결석] ${reportDate.value} - ${absentTimes} 결석`
+  try {
+    savingCounsel.value = true
+    await addDoc(collection(db, 'counselingLogs'), {
+      studentId: app.studentId,
+      date: reportDate.value,
+      content,
+      createdAt: new Date()
+    })
+    savedStudentIds.value = new Set([...savedStudentIds.value, app.studentId])
+  } catch (e) {
+    alert('상담 기록 저장에 실패했습니다.')
+  } finally {
+    savingCounsel.value = false
+  }
+}
+
+const changeReportClass = (cls) => {
+  reportClassFilter.value = cls
+  savedStudentIds.value = new Set()
+}
 
 const getLocalYYYYMMDD = (date) => {
   const d = new Date(date)
@@ -201,16 +290,16 @@ const fetchApplications = async () => {
 
 const filteredApplications = computed(() => {
   if (currentTab.value === '결석 리포트') {
-    return applications.value.filter(app => reportAttendance.value[app.studentId])
+    const absentApps = applications.value.filter(app => reportAttendance.value[app.studentId])
+    if (reportClassFilter.value === '전체') return absentApps
+    return absentApps.filter(app => getClassFromId(app.studentId) === reportClassFilter.value)
   }
   
   if (currentTab.value === '0타임') {
     return applications.value.filter(app => app.timeCount === 0)
   }
   
-  // 나머지 탭들은 기본적으로 0타임을 제외함
   const activeApps = applications.value.filter(app => app.timeCount > 0)
-  
   if (currentTab.value === '전체') return activeApps
   return activeApps.filter(app => app.room === currentTab.value)
 })
@@ -460,19 +549,42 @@ const downloadCSV = () => {
         </button>
       </div>
 
-      <div v-if="currentTab === '결석 리포트'" class="mb-6 flex flex-col sm:flex-row sm:items-center gap-4 bg-red-50 p-5 rounded-2xl border border-red-100 shadow-sm">
-        <div class="flex items-center gap-3">
-          <span class="font-black text-red-800">📅 결석 조회 날짜:</span>
-          <input 
-            type="date" 
-            v-model="reportDate" 
-            @change="fetchReportAttendance"
-            class="p-2 rounded-xl border border-red-300 outline-none focus:ring-2 focus:ring-red-500 text-gray-800 font-bold bg-white"
-          />
+      <div v-if="currentTab === '결석 리포트'" class="mb-6 space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-4 bg-red-50 p-5 rounded-2xl border border-red-100 shadow-sm">
+          <div class="flex items-center gap-3">
+            <span class="font-black text-red-800">📅 결석 조회 날짜:</span>
+            <input 
+              type="date" 
+              v-model="reportDate" 
+              @change="fetchReportAttendance"
+              class="p-2 rounded-xl border border-red-300 outline-none focus:ring-2 focus:ring-red-500 text-gray-800 font-bold bg-white"
+            />
+          </div>
+          <p class="text-sm font-medium text-red-600">
+            선택하신 날짜에 결석으로 체크된 학생 명단입니다.
+          </p>
         </div>
-        <p class="text-sm font-medium text-red-600">
-          선택하신 날짜에 결석으로 체크된 학생 명단입니다.
-        </p>
+
+        <!-- 실제 학급별 필터 소탭 (1~9반) -->
+        <div class="flex gap-2 overflow-x-auto pb-1">
+          <button
+            v-for="cls in ['전체', '1', '2', '3', '4', '5', '6', '7', '8', '9']"
+            :key="cls"
+            @click="changeReportClass(cls)"
+            :class="['px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all shadow-sm border',
+              reportClassFilter === cls
+                ? 'bg-red-600 text-white border-red-600'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-red-50']"
+          >
+            {{ cls === '전체' ? '전체' : cls + '반' }}
+            <span class="ml-1 text-[0.7rem] opacity-80">
+              ({{ cls === '전체'
+                ? applications.filter(a => reportAttendance[a.studentId]).length
+                : applications.filter(a => reportAttendance[a.studentId] && getClassFromId(a.studentId) === cls).length
+              }}명)
+            </span>
+          </button>
+        </div>
       </div>
 
       <!-- 뷰 모드 토글 (반실 탭일 때만 표시) -->
@@ -630,10 +742,13 @@ const downloadCSV = () => {
                 </td>
                 <td class="px-6 py-4 font-bold text-gray-800">{{ app.studentId }}</td>
                 <td class="px-6 py-4 font-bold text-blue-800">{{ app.name }}</td>
-                <td v-if="currentTab === '결석 리포트'" class="px-6 py-4 text-center">
-                  <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold text-xs">
-                    {{ (reportAttendance[app.studentId] || []).join(', ') }} 결석
-                  </span>
+                <td v-if="currentTab === '결석 리포트'" class="px-6 py-4">
+                  <div class="flex flex-col items-start gap-1">
+                    <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold text-xs">
+                      {{ (reportAttendance[app.studentId] || []).join(', ') }} 결석
+                    </span>
+                    <span class="text-[0.65rem] text-gray-400">{{ getClassFromId(app.studentId) }}반</span>
+                  </div>
                 </td>
                 <td v-else class="px-6 py-4 text-center">
                   <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-bold text-xs">
@@ -659,6 +774,17 @@ const downloadCSV = () => {
                         :class="['font-bold text-xs px-2.5 py-1.5 rounded-md transition-colors', (todayAttendance[app.studentId] || []).includes('야2') ? 'bg-red-500 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-200 border border-gray-200']"
                       >야2</button>
                     </div>
+                    <button
+                      v-if="currentTab === '결석 리포트'"
+                      @click="saveCounselForAbsent(app)"
+                      :disabled="savedStudentIds.has(app.studentId)"
+                      :class="['font-bold text-xs px-3 py-1.5 rounded-lg transition-colors border',
+                        savedStudentIds.has(app.studentId)
+                          ? 'bg-green-100 text-green-600 border-green-200 cursor-default'
+                          : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100']"
+                    >
+                      {{ savedStudentIds.has(app.studentId) ? '✅ 상담기록 저장됨' : '📓 상담기록' }}
+                    </button>
                     <button v-if="isSuperAdmin" @click="deleteRecord(app.id)" class="text-red-500 hover:text-red-700 font-bold text-xs bg-red-50 px-3 py-1.5 rounded-lg transition-colors border border-red-100">
                       삭제
                     </button>

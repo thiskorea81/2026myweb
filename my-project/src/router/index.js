@@ -63,6 +63,12 @@ const router = createRouter({
       name: 'TtsTool',
       component: () => import('../views/TtsView.vue'),
       meta: { requiresAuth: true }
+    },
+    // 자율학습 결석 사유 신청 (학생용, 인증 불필요)
+    {
+      path: '/absence-reason',
+      name: 'AbsenceReason',
+      component: () => import('../views/AbsenceReasonView.vue')
     }
   ]
 })
