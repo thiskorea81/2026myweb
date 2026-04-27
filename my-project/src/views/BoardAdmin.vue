@@ -62,10 +62,9 @@ const fetchBoards = async () => {
 
 onMounted(fetchBoards)
 
-// ID를 예쁜 포맷으로 변환 (예: [1학년 1반] 2026-03-10 🌅 아침 조회)
 const formatTitle = (id) => {
   const { grade, cls, dateStr, timeStr, isCommon } = parseBoardId(id)
-  const type = timeStr === '0730' ? '🌅 아침 조회' : (timeStr === '1220' ? '🌇 오후 종례' : '')
+  const type = (timeStr === '0730' || timeStr === '0800') ? '🌅 아침 조회' : ((timeStr === '1220' || timeStr === '1500' || timeStr === '1600') ? '🌇 오후 종례' : '')
   
   let prefix = ''
   if (isCommon) prefix = '[전체 공통] '
