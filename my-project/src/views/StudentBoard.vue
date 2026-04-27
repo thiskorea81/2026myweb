@@ -39,20 +39,25 @@ const getBoardInfo = () => {
   const currentHour = realNow.getHours()
   const currentMinute = realNow.getMinutes()
   const timeInt = currentHour * 100 + currentMinute 
+  const currentDay = realNow.getDay() // 0=Sun, 1=Mon, ..., 6=Sat
 
   let targetDbDate = new Date(realNow)
   let epochKey = '' 
   let morningMode = true
 
-  if (timeInt >= 1220) {
-    epochKey = '1220'
+  // 종례 시간: 수요일(3)은 15:00, 나머지는 16:00
+  const afternoonTime = (currentDay === 3) ? 1500 : 1600
+
+  if (timeInt >= afternoonTime) {
+    epochKey = (currentDay === 3) ? '1500' : '1600'
     morningMode = false
-  } else if (timeInt >= 730) { 
-    epochKey = '0730'
+  } else if (timeInt >= 800) { 
+    epochKey = '0800'
     morningMode = true
   } else {
     targetDbDate.setDate(targetDbDate.getDate() - 1)
-    epochKey = '1220' 
+    const prevDay = targetDbDate.getDay()
+    epochKey = (prevDay === 3) ? '1500' : '1600'
     morningMode = false 
   }
 
@@ -60,7 +65,7 @@ const getBoardInfo = () => {
   const documentId = `${viewGrade.value}_${viewClass.value}_${dateString}_${epochKey}` 
 
   let logTargetDate = new Date(targetDbDate)
-  if (epochKey === '0730') logTargetDate.setDate(logTargetDate.getDate() - 1) 
+  if (epochKey === '0800') logTargetDate.setDate(logTargetDate.getDate() - 1) 
 
   return { documentId, logTargetDate, morningMode }
 }
