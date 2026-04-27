@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { collection, getDocs, doc, deleteDoc } from 'firebase/firestore'
+import { collection, getDocs, doc, deleteDoc, setDoc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { getRoom } from '../utils/roomUtils'
 
@@ -12,7 +12,77 @@ const applications = ref([])
 const isLoading = ref(false)
 
 const currentTab = ref('전체')
-const tabs = ['전체', '1반실', '2반실', '3반실', '미배정', '0타임']
+const tabs = ['전체', '1반실', '2반실', '3반실', '미배정', '0타임', '결석 리포트']
+
+const getLocalYYYYMMDD = (date) => {
+  const d = new Date(date)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const todayStr = getLocalYYYYMMDD(new Date())
+const todayAttendance = ref({})
+
+const yesterday = new Date()
+yesterday.setDate(yesterday.getDate() - 1)
+const reportDate = ref(getLocalYYYYMMDD(yesterday))
+const reportAttendance = ref({})
+
+const fetchTodayAttendance = async () => {
+  try {
+    const docSnap = await getDoc(doc(db, 'studyAttendance', todayStr))
+    if (docSnap.exists()) {
+      todayAttendance.value = docSnap.data().absences || {}
+    } else {
+      todayAttendance.value = {}
+    }
+  } catch (error) {
+    console.error("오늘 결석 데이터 로드 에러:", error)
+  }
+}
+
+const fetchReportAttendance = async () => {
+  try {
+    const docSnap = await getDoc(doc(db, 'studyAttendance', reportDate.value))
+    if (docSnap.exists()) {
+      reportAttendance.value = docSnap.data().absences || {}
+    } else {
+      reportAttendance.value = {}
+    }
+  } catch (error) {
+    console.error("리포트 결석 데이터 로드 에러:", error)
+  }
+}
+
+const toggleAbsence = async (studentId, period) => {
+  try {
+    const studentAbsences = todayAttendance.value[studentId] || []
+    let newList = [...studentAbsences]
+    
+    if (newList.includes(period)) {
+      newList = newList.filter(p => p !== period)
+    } else {
+      newList.push(period)
+    }
+    
+    const order = { '8': 1, '야1': 2, '야2': 3 }
+    newList.sort((a, b) => order[a] - order[b])
+
+    const updatedAbsences = { ...todayAttendance.value }
+    if (newList.length === 0) {
+      delete updatedAbsences[studentId]
+    } else {
+      updatedAbsences[studentId] = newList
+    }
+    
+    await setDoc(doc(db, 'studyAttendance', todayStr), {
+      absences: updatedAbsences
+    }, { merge: true })
+    
+    todayAttendance.value = updatedAbsences
+  } catch (error) {
+    alert('결석 상태 변경에 실패했습니다.')
+  }
+}
 
 const handleAdminLogin = () => {
   if (inputId.value === 'admin' && inputPw.value === 'admin') {
@@ -44,6 +114,7 @@ const fetchApplications = async () => {
       return { id: d.id, ...appData, studentId, room, timeCount }
     })
     
+    // 가장 최근에 업데이트된 내용이 먼저 보이도록 최신순 정렬 (기본값)
     // 학번 순으로 오름차순 정렬 (관리 편의성을 위함)
     data.sort((a, b) => {
       const idA = parseInt(a.studentId, 10) || 0
@@ -52,6 +123,8 @@ const fetchApplications = async () => {
     })
     
     applications.value = data
+    await fetchTodayAttendance()
+    await fetchReportAttendance()
   } catch (error) {
     console.error("데이터 로드 에러:", error)
   } finally {
@@ -60,6 +133,10 @@ const fetchApplications = async () => {
 }
 
 const filteredApplications = computed(() => {
+  if (currentTab.value === '결석 리포트') {
+    return applications.value.filter(app => reportAttendance.value[app.studentId])
+  }
+  
   if (currentTab.value === '0타임') {
     return applications.value.filter(app => app.timeCount === 0)
   }
@@ -85,16 +162,29 @@ const downloadCSV = () => {
   const dataToExport = currentTab.value === '전체' ? applications.value : filteredApplications.value
   if (dataToExport.length === 0) return alert('다운로드할 데이터가 없습니다.')
   
-  const header = ['배정교실', '학번', '이름', '월8', '월야1', '월야2', '화8', '화야1', '화야2', '목8', '목야1', '목야2', '금8', '금야1', '금야2']
+  const isReport = currentTab.value === '결석 리포트'
+  
+  const header = ['배정교실', '학번', '이름']
+  if (isReport) {
+    header.push('결석시간')
+  } else {
+    header.push('월8', '월야1', '월야2', '화8', '화야1', '화야2', '목8', '목야1', '목야2', '금8', '금야1', '금야2')
+  }
+  
   let csvContent = '\uFEFF' + header.join(',') + '\n'
 
   const keys = ['월8', '월야1', '월야2', '화8', '화야1', '화야2', '목8', '목야1', '목야2', '금8', '금야1', '금야2']
 
   dataToExport.forEach(item => {
     const row = [item.room, item.studentId, item.name]
-    keys.forEach(k => {
-      row.push(item.selection && item.selection[k] ? '1' : '')
-    })
+    if (isReport) {
+      const absentTimes = (reportAttendance.value[item.studentId] || []).join(', ')
+      row.push(`"${absentTimes}"`)
+    } else {
+      keys.forEach(k => {
+        row.push(item.selection && item.selection[k] ? '1' : '')
+      })
+    }
     csvContent += row.join(',') + '\n'
   })
 
@@ -102,7 +192,9 @@ const downloadCSV = () => {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `자율학습신청현황_${currentTab.value}_${new Date().toLocaleDateString()}.csv`
+  link.download = currentTab.value === '결석 리포트' 
+    ? `야자결석리포트_${reportDate.value}.csv` 
+    : `자율학습신청현황_${currentTab.value}_${new Date().toLocaleDateString()}.csv`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -165,10 +257,25 @@ const downloadCSV = () => {
           v-for="tab in tabs" 
           :key="tab"
           @click="currentTab = tab"
-          :class="['px-5 py-2 rounded-full font-bold whitespace-nowrap transition-all shadow-sm', currentTab === tab ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50']"
+          :class="['px-5 py-2 rounded-full font-bold whitespace-nowrap transition-all shadow-sm', currentTab === tab ? (tab === '결석 리포트' ? 'bg-red-600 text-white' : 'bg-blue-600 text-white') : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50']"
         >
           {{ tab }}
         </button>
+      </div>
+
+      <div v-if="currentTab === '결석 리포트'" class="mb-6 flex flex-col sm:flex-row sm:items-center gap-4 bg-red-50 p-5 rounded-2xl border border-red-100 shadow-sm">
+        <div class="flex items-center gap-3">
+          <span class="font-black text-red-800">📅 결석 조회 날짜:</span>
+          <input 
+            type="date" 
+            v-model="reportDate" 
+            @change="fetchReportAttendance"
+            class="p-2 rounded-xl border border-red-300 outline-none focus:ring-2 focus:ring-red-500 text-gray-800 font-bold bg-white"
+          />
+        </div>
+        <p class="text-sm font-medium text-red-600">
+          선택하신 날짜에 결석으로 체크된 학생 명단입니다.
+        </p>
       </div>
 
       <div v-if="isLoading" class="py-20 text-center text-gray-400">
@@ -184,14 +291,15 @@ const downloadCSV = () => {
                 <th class="px-6 py-4">교실</th>
                 <th class="px-6 py-4">학번</th>
                 <th class="px-6 py-4">이름</th>
-                <th class="px-6 py-4 text-center">신청 시간 합계</th>
+                <th v-if="currentTab === '결석 리포트'" class="px-6 py-4 text-center text-red-600">결석 시간대</th>
+                <th v-else class="px-6 py-4 text-center">신청 시간 합계</th>
                 <th class="px-6 py-4 text-gray-400 text-xs">최종 수정일</th>
                 <th class="px-6 py-4 text-right">관리</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="filteredApplications.length === 0">
-                <td colspan="6" class="px-6 py-12 text-center text-gray-500 font-medium">선택한 그룹에 신청한 학생이 없습니다.</td>
+                <td colspan="6" class="px-6 py-12 text-center text-gray-500 font-medium">조회된 학생이 없습니다.</td>
               </tr>
               <tr v-for="app in filteredApplications" :key="app.id" class="border-b border-gray-100 hover:bg-blue-50/30 transition-colors">
                 <td class="px-6 py-4 font-bold text-gray-600">
@@ -199,7 +307,12 @@ const downloadCSV = () => {
                 </td>
                 <td class="px-6 py-4 font-bold text-gray-800">{{ app.studentId }}</td>
                 <td class="px-6 py-4 font-bold text-blue-800">{{ app.name }}</td>
-                <td class="px-6 py-4 text-center">
+                <td v-if="currentTab === '결석 리포트'" class="px-6 py-4 text-center">
+                  <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold text-xs">
+                    {{ (reportAttendance[app.studentId] || []).join(', ') }} 결석
+                  </span>
+                </td>
+                <td v-else class="px-6 py-4 text-center">
                   <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-bold text-xs">
                     {{ app.timeCount }}타임
                   </span>
@@ -208,9 +321,25 @@ const downloadCSV = () => {
                   {{ new Date(app.updatedAt).toLocaleString() }}
                 </td>
                 <td class="px-6 py-4 text-right">
-                  <button @click="deleteRecord(app.id)" class="text-red-500 hover:text-red-700 font-bold text-xs bg-red-50 px-3 py-1.5 rounded-lg transition-colors">
-                    삭제
-                  </button>
+                  <div class="flex justify-end gap-2 items-center">
+                    <div v-if="currentTab !== '결석 리포트'" class="flex gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
+                      <button 
+                        @click="toggleAbsence(app.studentId, '8')" 
+                        :class="['font-bold text-xs px-2.5 py-1.5 rounded-md transition-colors', (todayAttendance[app.studentId] || []).includes('8') ? 'bg-red-500 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-200 border border-gray-200']"
+                      >8</button>
+                      <button 
+                        @click="toggleAbsence(app.studentId, '야1')" 
+                        :class="['font-bold text-xs px-2.5 py-1.5 rounded-md transition-colors', (todayAttendance[app.studentId] || []).includes('야1') ? 'bg-red-500 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-200 border border-gray-200']"
+                      >야1</button>
+                      <button 
+                        @click="toggleAbsence(app.studentId, '야2')" 
+                        :class="['font-bold text-xs px-2.5 py-1.5 rounded-md transition-colors', (todayAttendance[app.studentId] || []).includes('야2') ? 'bg-red-500 text-white shadow-sm' : 'bg-white text-gray-500 hover:bg-gray-200 border border-gray-200']"
+                      >야2</button>
+                    </div>
+                    <button @click="deleteRecord(app.id)" class="text-red-500 hover:text-red-700 font-bold text-xs bg-red-50 px-3 py-1.5 rounded-lg transition-colors border border-red-100">
+                      삭제
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
