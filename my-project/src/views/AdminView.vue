@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { collection, getDocs, doc, deleteDoc, setDoc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { getRoom } from '../utils/roomUtils'
+import StudySeatGrid from '../components/StudySeatGrid.vue'
 
 const isAdminAuth = ref(false)
 const inputId = ref('')
@@ -12,7 +13,25 @@ const applications = ref([])
 const isLoading = ref(false)
 
 const currentTab = ref('전체')
-const tabs = ['전체', '1반실', '2반실', '3반실', '미배정', '0타임', '결석 리포트']
+const viewMode = ref('list')
+
+const getInitialDay = () => {
+  const d = new Date().getDay()
+  if (d >= 1 && d <= 5) return ['월', '화', '수', '목', '금'][d - 1]
+  return '월'
+}
+
+const getInitialPeriod = () => {
+  const now = new Date()
+  const time = now.getHours() * 100 + now.getMinutes()
+  if (time < 1830) return '8'
+  if (time < 2030) return '야1'
+  return '야2'
+}
+
+const currentDay = ref(getInitialDay())
+const currentCheckPeriod = ref(getInitialPeriod())
+const tabs = ['전체', '1반실', '2반실', '3반실', '4반실', '5반실', '미배정', '0타임', '결석 리포트']
 
 const getLocalYYYYMMDD = (date) => {
   const d = new Date(date)
@@ -114,12 +133,41 @@ const fetchApplications = async () => {
       return { id: d.id, ...appData, studentId, room, timeCount }
     })
     
-    // 가장 최근에 업데이트된 내용이 먼저 보이도록 최신순 정렬 (기본값)
     // 학번 순으로 오름차순 정렬 (관리 편의성을 위함)
     data.sort((a, b) => {
       const idA = parseInt(a.studentId, 10) || 0
       const idB = parseInt(b.studentId, 10) || 0
       return idA - idB
+    })
+    
+    // 교실 수용 인원 초과 시 4/5반실로 동적 할당 로직
+    const activeData = data.filter(app => app.timeCount > 0)
+    let overflowQueue = []
+    const roomCounts = { '1반실': 0, '2반실': 0, '3반실': 0 }
+    const roomLimits = { '1반실': 30, '2반실': 32, '3반실': 32 }
+    
+    activeData.forEach(app => {
+      if (roomCounts[app.room] !== undefined) {
+        if (roomCounts[app.room] < roomLimits[app.room]) {
+          roomCounts[app.room]++
+        } else {
+          overflowQueue.push(app)
+        }
+      }
+    })
+    
+    let count4 = 0
+    let count5 = 0
+    overflowQueue.forEach(app => {
+      if (count4 < 30) {
+        app.room = '4반실'
+        count4++
+      } else if (count5 < 30) {
+        app.room = '5반실'
+        count5++
+      } else {
+        app.room = '미배정'
+      }
     })
     
     applications.value = data
@@ -278,14 +326,78 @@ const downloadCSV = () => {
         </p>
       </div>
 
+      <!-- 뷰 모드 토글 (반실 탭일 때만 표시) -->
+      <div v-if="['1반실', '2반실', '3반실', '4반실', '5반실'].includes(currentTab)" class="mb-6 flex flex-col sm:flex-row justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm">
+        <div class="flex bg-white rounded-lg p-1 border border-gray-200 shadow-sm mb-4 sm:mb-0">
+          <button 
+            @click="viewMode = 'list'" 
+            :class="['px-4 py-2 text-sm font-bold rounded-md transition-colors', viewMode === 'list' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-50']"
+          >
+            📋 명단 보기
+          </button>
+          <button 
+            @click="viewMode = 'grid'" 
+            :class="['px-4 py-2 text-sm font-bold rounded-md transition-colors', viewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-50']"
+          >
+            🪑 자리배치도 보기
+          </button>
+        </div>
+
+        <div v-if="viewMode === 'grid'" class="flex items-center gap-4 flex-wrap">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-black text-gray-700">체크 요일:</span>
+            <div class="flex gap-1 bg-white p-1 rounded-lg border border-gray-200">
+              <button 
+                v-for="day in ['월', '화', '수', '목', '금']"
+                :key="day"
+                @click="currentDay = day" 
+                :class="['px-3 py-1.5 text-xs font-bold rounded-md transition-colors', currentDay === day ? 'bg-teal-600 text-white' : 'text-gray-500 hover:bg-gray-50']"
+              >{{ day }}</button>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-black text-gray-700">체크 시간:</span>
+            <div class="flex gap-1 bg-white p-1 rounded-lg border border-gray-200">
+              <button 
+                @click="currentCheckPeriod = '8'" 
+                :class="['px-3 py-1.5 text-xs font-bold rounded-md transition-colors', currentCheckPeriod === '8' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50']"
+              >8교시 (16:40~)</button>
+              <button 
+                @click="currentCheckPeriod = '야1'" 
+                :class="['px-3 py-1.5 text-xs font-bold rounded-md transition-colors', currentCheckPeriod === '야1' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50']"
+              >야1 (19:00~)</button>
+              <button 
+                @click="currentCheckPeriod = '야2'" 
+                :class="['px-3 py-1.5 text-xs font-bold rounded-md transition-colors', currentCheckPeriod === '야2' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50']"
+              >야2 (20:40~)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div v-if="isLoading" class="py-20 text-center text-gray-400">
         <div class="w-10 h-10 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
         데이터를 불러오는 중입니다...
       </div>
 
       <div v-else class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm text-left whitespace-nowrap">
+        
+        <template v-if="viewMode === 'grid' && ['1반실', '2반실', '3반실', '4반실', '5반실'].includes(currentTab)">
+          <div class="p-6 bg-gray-50">
+            <StudySeatGrid 
+              :roomName="currentTab" 
+              :students="filteredApplications" 
+              :todayAttendance="todayAttendance"
+              :currentDay="currentDay"
+              :currentPeriod="currentCheckPeriod"
+              @toggle-absence="toggleAbsence($event, currentCheckPeriod)"
+            />
+          </div>
+        </template>
+        
+        <template v-else>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left whitespace-nowrap">
             <thead class="bg-gray-50 text-gray-700 font-bold border-b border-gray-200">
               <tr>
                 <th class="px-6 py-4">교실</th>
@@ -343,8 +455,9 @@ const downloadCSV = () => {
                 </td>
               </tr>
             </tbody>
-          </table>
-        </div>
+            </table>
+          </div>
+        </template>
       </div>
     </div>
 
