@@ -42,11 +42,11 @@ const fetchApplications = async () => {
       return { id: d.id, ...appData, studentId, room }
     })
     
-    // 가장 최근에 업데이트된 내용이 먼저 보이도록 최신순 정렬
+    // 학번 순으로 오름차순 정렬 (관리 편의성을 위함)
     data.sort((a, b) => {
-      const dateA = new Date(a.updatedAt || 0)
-      const dateB = new Date(b.updatedAt || 0)
-      return dateB - dateA
+      const idA = parseInt(a.studentId, 10) || 0
+      const idB = parseInt(b.studentId, 10) || 0
+      return idA - idB
     })
     
     applications.value = data
