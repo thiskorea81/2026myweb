@@ -10,14 +10,48 @@ const isLoading = ref(true)
 const editingId = ref(null)
 const editContent = ref('')
 
+const parseBoardId = (id) => {
+  const parts = id.split('_')
+  let grade, cls, dateStr, timeStr, isCommon = false
+  
+  if (parts.length === 4) { 
+    grade = parts[0]
+    cls = parts[1]
+    dateStr = parts[2]
+    timeStr = parts[3]
+  } else if (parts.length === 3 && parts[0] === 'COMMON') { 
+    isCommon = true
+    dateStr = parts[1]
+    timeStr = parts[2]
+  } else if (parts.length === 2) { 
+    dateStr = parts[0]
+    timeStr = parts[1]
+  } else {
+    dateStr = ''
+    timeStr = ''
+  }
+  
+  return { grade, cls, dateStr, timeStr, isCommon }
+}
+
+const getSortKey = (id) => {
+  const { dateStr, timeStr } = parseBoardId(id)
+  return `${dateStr}_${timeStr}`
+}
+
 const fetchBoards = async () => {
   isLoading.value = true
   try {
     const snap = await getDocs(collection(db, 'boardSummaries'))
     const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
     
-    // 문서 ID(예: 2026-03-10_1520)를 기준으로 최신순 정렬
-    data.sort((a, b) => b.id.localeCompare(a.id))
+    // 실제 날짜(dateStr_timeStr)를 추출하여 최신순으로 정렬
+    data.sort((a, b) => {
+      const keyA = getSortKey(a.id)
+      const keyB = getSortKey(b.id)
+      if (keyA !== keyB) return keyB.localeCompare(keyA)
+      return a.id.localeCompare(b.id)
+    })
     boards.value = data
   } catch (error) {
     console.error("게시판 로드 에러:", error)
@@ -28,11 +62,16 @@ const fetchBoards = async () => {
 
 onMounted(fetchBoards)
 
-// ID를 예쁜 날짜 포맷으로 변환 (예: 2026-03-10_0730 -> 2026년 3월 10일 아침 조회)
+// ID를 예쁜 포맷으로 변환 (예: [1학년 1반] 2026-03-10 🌅 아침 조회)
 const formatTitle = (id) => {
-  const [dateStr, timeStr] = id.split('_')
-  const type = timeStr === '0730' ? '🌅 아침 조회' : '🌇 오후 종례'
-  return `${dateStr} ${type}`
+  const { grade, cls, dateStr, timeStr, isCommon } = parseBoardId(id)
+  const type = timeStr === '0730' ? '🌅 아침 조회' : (timeStr === '1220' ? '🌇 오후 종례' : '')
+  
+  let prefix = ''
+  if (isCommon) prefix = '[전체 공통] '
+  else if (grade && cls) prefix = `[${grade}학년 ${cls}반] `
+  
+  return `${prefix}${dateStr} ${type}`
 }
 
 // 💡 수정 모드 켜기
