@@ -31,8 +31,15 @@ const fetchApplications = async () => {
     const snap = await getDocs(collection(db, 'studyApplications'))
     const data = snap.docs.map(d => {
       const appData = d.data()
-      const room = appData.room || getRoom(appData.studentId)
-      return { id: d.id, ...appData, room }
+      let studentId = String(appData.studentId).trim()
+      
+      // 4자리 학번을 5자리로 통일하여 표시 (예: 1401 -> 10401)
+      if (studentId.length === 4) {
+        studentId = studentId[0] + '0' + studentId.substring(1)
+      }
+
+      const room = appData.room || getRoom(studentId)
+      return { id: d.id, ...appData, studentId, room }
     })
     
     // 가장 최근에 업데이트된 내용이 먼저 보이도록 최신순 정렬
