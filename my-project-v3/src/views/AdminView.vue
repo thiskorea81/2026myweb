@@ -18,7 +18,10 @@ const viewMode = ref('grid')
 
 const getInitialDay = () => {
   const d = new Date().getDay()
-  if (d >= 1 && d <= 5) return ['월', '화', '수', '목', '금'][d - 1]
+  if (d === 1) return '월'
+  if (d === 2) return '화'
+  if (d === 3 || d === 4) return '목'
+  if (d === 5) return '금'
   return '월'
 }
 
@@ -447,7 +450,7 @@ const downloadCSV = () => {
           <div class="filter-group">
             <span class="label">요일</span>
             <div class="btn-group">
-              <button v-for="day in ['월', '화', '수', '목', '금']" :key="day" @click="currentDay = day" :class="['mini-btn', currentDay === day ? 'active' : '']">{{ day }}</button>
+              <button v-for="day in ['월', '화', '목', '금']" :key="day" @click="currentDay = day" :class="['mini-btn', currentDay === day ? 'active' : '']">{{ day }}</button>
             </div>
           </div>
           <div class="filter-group mt-2">

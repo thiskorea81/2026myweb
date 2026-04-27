@@ -64,7 +64,14 @@ const isAbsent = (studentId) => {
   return absences.includes(props.currentPeriod)
 }
 
+const getTodayDayString = () => {
+  const d = new Date().getDay()
+  if (d >= 1 && d <= 5) return ['월', '화', '수', '목', '금'][d - 1]
+  return null
+}
+
 const hasReason = (studentId) => {
+  if (props.currentDay !== getTodayDayString()) return false
   if (!props.todayAbsenceReasons || !props.todayAbsenceReasons[studentId]) return false
   const reasonObj = props.todayAbsenceReasons[studentId]
   // Check if reason is for the current period
