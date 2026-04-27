@@ -12,7 +12,7 @@ const applications = ref([])
 const isLoading = ref(false)
 
 const currentTab = ref('전체')
-const tabs = ['전체', '1반실', '2반실', '3반실', '미배정']
+const tabs = ['전체', '1반실', '2반실', '3반실', '미배정', '0타임']
 
 const handleAdminLogin = () => {
   if (inputId.value === 'admin' && inputPw.value === 'admin') {
@@ -39,7 +39,9 @@ const fetchApplications = async () => {
       }
 
       const room = appData.room || getRoom(studentId)
-      return { id: d.id, ...appData, studentId, room }
+      const timeCount = Object.values(appData.selection || {}).filter(v => v).length
+      
+      return { id: d.id, ...appData, studentId, room, timeCount }
     })
     
     // 학번 순으로 오름차순 정렬 (관리 편의성을 위함)
@@ -58,8 +60,15 @@ const fetchApplications = async () => {
 }
 
 const filteredApplications = computed(() => {
-  if (currentTab.value === '전체') return applications.value
-  return applications.value.filter(app => app.room === currentTab.value)
+  if (currentTab.value === '0타임') {
+    return applications.value.filter(app => app.timeCount === 0)
+  }
+  
+  // 나머지 탭들은 기본적으로 0타임을 제외함
+  const activeApps = applications.value.filter(app => app.timeCount > 0)
+  
+  if (currentTab.value === '전체') return activeApps
+  return activeApps.filter(app => app.room === currentTab.value)
 })
 
 const deleteRecord = async (id) => {
@@ -192,7 +201,7 @@ const downloadCSV = () => {
                 <td class="px-6 py-4 font-bold text-blue-800">{{ app.name }}</td>
                 <td class="px-6 py-4 text-center">
                   <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-bold text-xs">
-                    {{ Object.values(app.selection || {}).filter(v => v).length }}타임
+                    {{ app.timeCount }}타임
                   </span>
                 </td>
                 <td class="px-6 py-4 text-gray-400 text-xs">
