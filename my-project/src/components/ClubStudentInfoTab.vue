@@ -77,7 +77,10 @@ const deleteActivity = async (activityId) => {
 
       <div v-else class="grid grid-cols-2 gap-4 bg-orange-50 p-4 rounded-lg border border-orange-100 text-sm">
         <p><span class="text-gray-500 font-bold w-20 inline-block">역할:</span> <span class="text-gray-900 font-medium">{{ student.clubRole || '-' }}</span></p>
-        <p><span class="text-gray-500 font-bold w-20 inline-block">연락처:</span> <span class="text-gray-900 font-medium">{{ student.phone || '-' }}</span></p>
+        <p><span class="text-gray-500 font-bold w-20 inline-block">연락처:</span> 
+          <a v-if="student.phone" :href="`tel:${student.phone.replace(/-/g, '')}`" class="text-gray-900 font-medium hover:text-blue-600 hover:underline">{{ student.phone }}</a>
+          <span v-else class="text-gray-900 font-medium">-</span>
+        </p>
         <p><span class="text-gray-500 font-bold w-20 inline-block">희망 진로:</span> <span class="font-bold text-orange-700">{{ student.career || '-' }}</span></p>
         <p><span class="text-gray-500 font-bold w-20 inline-block">특기:</span> <span class="font-bold text-blue-600">{{ student.specialty || '-' }}</span></p>
         <p class="col-span-2">

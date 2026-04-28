@@ -61,15 +61,18 @@ const cancelEdit = () => {
             <div class="space-y-2 text-sm">
               <p class="flex items-center"><span class="text-gray-500 w-24">본인 연락처:</span> 
                 <input v-if="isEditMode" v-model="editForm.phone" class="border border-gray-300 p-1.5 rounded w-full focus:ring-2 focus:ring-blue-400 outline-none">
-                <span v-else class="font-medium">{{ student.phone || '-' }}</span>
+                <a v-else-if="student.phone" :href="`tel:${student.phone.replace(/-/g, '')}`" class="font-medium hover:text-blue-600 hover:underline">{{ student.phone }}</a>
+                <span v-else class="font-medium">-</span>
               </p>
               <p class="flex items-center"><span class="text-gray-500 w-24">보호자1:</span> 
                 <input v-if="isEditMode" v-model="editForm.parent1Phone" class="border border-gray-300 p-1.5 rounded w-full focus:ring-2 focus:ring-blue-400 outline-none">
-                <span v-else class="font-medium">{{ student.parent1Phone || '-' }}</span>
+                <a v-else-if="student.parent1Phone" :href="`tel:${student.parent1Phone.replace(/-/g, '')}`" class="font-medium hover:text-blue-600 hover:underline">{{ student.parent1Phone }}</a>
+                <span v-else class="font-medium">-</span>
               </p>
               <p class="flex items-center"><span class="text-gray-500 w-24">보호자2:</span> 
                 <input v-if="isEditMode" v-model="editForm.parent2Phone" class="border border-gray-300 p-1.5 rounded w-full focus:ring-2 focus:ring-blue-400 outline-none">
-                <span v-else>{{ student.parent2Phone || '-' }}</span>
+                <a v-else-if="student.parent2Phone" :href="`tel:${student.parent2Phone.replace(/-/g, '')}`" class="hover:text-blue-600 hover:underline">{{ student.parent2Phone }}</a>
+                <span v-else>-</span>
               </p>
               <p class="flex items-start"><span class="text-gray-500 w-24 mt-1.5">주소:</span> 
                 <textarea v-if="isEditMode" v-model="editForm.address" class="border border-gray-300 p-1.5 rounded w-full h-12 resize-none focus:ring-2 focus:ring-blue-400 outline-none"></textarea>

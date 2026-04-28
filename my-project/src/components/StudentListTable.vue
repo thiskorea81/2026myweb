@@ -54,9 +54,9 @@ const isAllSelected = computed({
               {{ student.name }}
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-gray-600">
-              <span class="px-2 py-1 rounded-full text-xs" :class="student.gender === '남' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'">{{ student.gender }}</span>
+              <a v-if="student.phone" :href="`tel:${student.phone.replace(/-/g, '')}`" class="hover:text-blue-600 hover:underline">{{ student.phone }}</a>
+              <span v-else>-</span>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap text-gray-600">{{ student.phone }}</td>
             <td class="px-6 py-4 whitespace-nowrap text-center">
               <button @click="$emit('open-modal', student)" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700 transition-colors">자세히</button>
             </td>
