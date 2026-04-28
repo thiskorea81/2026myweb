@@ -12,6 +12,7 @@ const isCleaning = ref(false)
 
 const selectedGrade = ref('전체')
 const selectedClass = ref('전체')
+const searchQuery = ref('')
 const selectedIds = ref([])
 
 // 데이터 불러오기
@@ -37,7 +38,12 @@ const filteredStudents = computed(() => {
   return students.value.filter(s => {
     const matchGrade = selectedGrade.value === '전체' || String(s.grade) === selectedGrade.value
     const matchClass = selectedClass.value === '전체' || String(s.class) === selectedClass.value
-    return matchGrade && matchClass
+    const q = searchQuery.value.trim()
+    const matchSearch = !q || 
+      (s.name && s.name.includes(q)) || 
+      (s.studentId && String(s.studentId).includes(q)) ||
+      (s.phone && s.phone.includes(q))
+    return matchGrade && matchClass && matchSearch
   })
 })
 
@@ -102,69 +108,64 @@ const deleteStudent = async (id) => {
   }
 }
 
-// 💡 한 줄로 뭉친 데이터도 스스로 분리하는 스마트 파싱 로직
+// 💡 엑셀 TSV 데이터를 안전하게 파싱하여 병합하는 로직
 const handleBulkUpload = async () => {
   if (!bulkText.value.trim()) return alert('데이터를 붙여넣어 주세요.')
-  if (!confirm('학생 명단을 등록하시겠습니까?')) return
+  if (!confirm('학생 명단과 연락처를 업데이트하시겠습니까?\n(기존 상담 기록이나 기타 정보는 삭제되지 않고 안전하게 유지됩니다.)')) return
 
   isUploading.value = true
   let successCount = 0
 
   try {
-    // 탭, 쉼표, 줄바꿈, 띄어쓰기 등 모든 공백 문자를 기준으로 데이터를 완전히 산산조각 냅니다.
-    const tokens = bulkText.value.split(/[\t\n\r,\s]+/).map(t => t.trim()).filter(t => t !== '')
-    const parsedStudents = []
+    const lines = bulkText.value.trim().split(/\r?\n/)
+    
+    for (const line of lines) {
+      if (!line.trim()) continue
+      
+      let cols = line.includes('\t') ? line.split('\t') : line.split(/[\s,]+/)
+      
+      // 학번이 숫자가 아니면 스킵 (헤더 제외)
+      if (isNaN(parseInt(cols[0], 10))) continue
 
-    let i = 0
-    while (i <= tokens.length - 6) {
-      const g = parseInt(tokens[i], 10)
-      const c = parseInt(tokens[i+1], 10)
-      const n = parseInt(tokens[i+2], 10)
+      const grade = parseInt(cols[1], 10)
+      const cls = parseInt(cols[2], 10)
+      const num = parseInt(cols[3], 10)
+      
+      if (isNaN(grade) || isNaN(cls) || isNaN(num)) continue
 
-      // 학년, 반, 번호 자리에 숫자가 제대로 들어있는지 확인
-      if (!isNaN(g) && !isNaN(c) && !isNaN(n)) {
-        const name = tokens[i+3]
-        const gender = tokens[i+4]
-        const birthDate = tokens[i+5]
-        
-        let note = ''
-        let advance = 6
-        
-        // 다음 칸을 미리 살펴보고 숫자가 아니면 비고(특이사항)로 간주합니다.
-        if (i + 6 < tokens.length) {
-          const nextG = parseInt(tokens[i+6], 10)
-          const nextC = parseInt(tokens[i+7], 10)
-          if (isNaN(nextG) || isNaN(nextC)) {
-            note = tokens[i+6]
-            advance = 7
-          }
-        }
-        
-        parsedStudents.push({ grade: g, class: c, number: n, name, gender, birthDate, note })
-        i += advance
-      } else {
-        i++ // 패턴에 맞지 않으면 다음 글자로 넘어가서 다시 찾기
-      }
-    }
+      const name = cols[4]?.trim() || ''
+      const gender = cols[5]?.trim() || ''
+      const birthDate = cols[6]?.trim() || ''
+      const note = cols[7]?.trim() || ''
+      const phone = cols[8]?.trim() || ''
+      const parent1Phone = cols[9]?.trim() || ''
+      const parent2Phone = cols[10]?.trim() || ''
 
-    // 찾아낸 학생 데이터베이스에 병합 저장
-    for (const s of parsedStudents) {
-      const studentId = `${s.grade}${String(s.class).padStart(2, '0')}${String(s.number).padStart(2, '0')}`
-      await setDoc(doc(db, 'students', studentId), {
-        studentId: studentId,
-        grade: s.grade,
-        class: s.class,
-        number: s.number,
-        name: s.name,
-        gender: s.gender,
-        birthDate: s.birthDate,
-        note: s.note,
+      const studentId = `${grade}${String(cls).padStart(2, '0')}${String(num).padStart(2, '0')}`
+
+      // Firestore 업데이트 객체 준비
+      const dataToUpdate = {
+        studentId,
+        grade,
+        class: cls,
+        number: num,
+        name,
+        gender,
         updatedAt: new Date().toISOString()
-      }, { merge: true }) 
+      }
+      
+      // 빈 값이 아닌 경우에만 업데이트하여 기존 데이터를 보호함
+      if (birthDate) dataToUpdate.birthDate = birthDate
+      if (note) dataToUpdate.note = note
+      if (phone) dataToUpdate.phone = phone
+      if (parent1Phone) dataToUpdate.parent1Phone = parent1Phone
+      if (parent2Phone) dataToUpdate.parent2Phone = parent2Phone
+
+      await setDoc(doc(db, 'students', studentId), dataToUpdate, { merge: true }) 
       successCount++
     }
     
-    alert(`✅ ${successCount}명의 학생 데이터가 패턴을 스스로 분석하여 완벽하게 등록되었습니다!`)
+    alert(`✅ ${successCount}명의 학생 데이터가 성공적으로 업데이트되었습니다!\n(기존 상담 및 비고 정보는 안전하게 유지되었습니다.)`)
     bulkText.value = ''
     showUploadArea.value = false
     fetchStudents()
@@ -239,7 +240,7 @@ const handleBulkUpload = async () => {
     </div>
 
     <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-      <div class="bg-gray-50 px-6 py-4 border-b border-gray-200 flex gap-4 items-center">
+      <div class="bg-gray-50 px-6 py-4 border-b border-gray-200 flex flex-wrap gap-4 items-center">
         <span class="font-bold text-gray-700">필터:</span>
         <select v-model="selectedGrade" class="p-2 border border-gray-300 rounded-lg bg-white text-gray-800 outline-none font-bold text-sm">
           <option value="전체">학년 전체</option>
@@ -251,8 +252,15 @@ const handleBulkUpload = async () => {
           <option value="전체">반 전체</option>
           <option v-for="c in 15" :key="c" :value="String(c)">{{ c }}반</option>
         </select>
-        <div class="flex-1"></div>
-        <span class="text-sm font-bold text-gray-500">조회된 학생: <span class="text-blue-600">{{ filteredStudents.length }}</span>명</span>
+        
+        <div class="flex-1 min-w-[200px] flex items-center bg-white border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 shadow-sm">
+          <span class="pl-3 text-gray-400">🔍</span>
+          <input v-model="searchQuery" type="text" placeholder="이름, 학번, 연락처 검색..." class="w-full p-2 outline-none text-sm font-bold text-gray-800">
+        </div>
+
+        <div class="w-full sm:w-auto text-right">
+          <span class="text-sm font-bold text-gray-500">조회된 학생: <span class="text-blue-600">{{ filteredStudents.length }}</span>명</span>
+        </div>
       </div>
 
       <div class="overflow-x-auto">
@@ -267,7 +275,7 @@ const handleBulkUpload = async () => {
               <th class="px-4 py-3">반</th>
               <th class="px-4 py-3">번호</th>
               <th class="px-4 py-3 text-left">성명</th>
-              <th class="px-4 py-3 text-left">생년월일</th>
+              <th class="px-4 py-3 text-left">연락처</th>
               <th class="px-4 py-3 text-right">관리</th>
             </tr>
           </thead>
@@ -282,7 +290,10 @@ const handleBulkUpload = async () => {
               <td class="px-4 py-3 text-gray-800 font-medium">{{ student.class }}</td>
               <td class="px-4 py-3 text-gray-800 font-medium">{{ student.number }}</td>
               <td class="px-4 py-3 font-bold text-gray-800 text-left">{{ student.name }}</td>
-              <td class="px-4 py-3 text-left text-gray-800 font-mono">{{ student.birthDate }}</td>
+              <td class="px-4 py-3 text-left text-gray-600 font-mono">
+                <a v-if="student.phone" :href="`tel:${student.phone.replace(/-/g, '')}`" class="hover:text-blue-600 hover:underline">{{ student.phone }}</a>
+                <span v-else>-</span>
+              </td>
               
               <td class="px-4 py-3 text-right"><button @click="deleteStudent(student.id)" class="text-red-500 hover:text-red-700 font-bold text-xs bg-red-50 px-2 py-1 rounded">삭제</button></td>
             </tr>
