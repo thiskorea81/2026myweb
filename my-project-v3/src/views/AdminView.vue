@@ -84,7 +84,7 @@ const fetchTodayAttendance = async () => {
     reasonsSnap.docs.forEach(d => {
       const data = d.data()
       if (data.date === todayStr) {
-        reasonsMap[data.studentId] = data
+        reasonsMap[data.studentId] = { id: d.id, ...data }
       }
     })
     todayAbsenceReasons.value = reasonsMap
@@ -108,7 +108,7 @@ const fetchReportAttendance = async () => {
     reasonsSnap.docs.forEach(d => {
       const data = d.data()
       if (data.date === reportDate.value) {
-        reasonsMap[data.studentId] = data
+        reasonsMap[data.studentId] = { id: d.id, ...data }
       }
     })
     dailyAbsenceReasons.value = reasonsMap
@@ -250,6 +250,33 @@ const deleteRecord = async (id) => {
     fetchApplications() 
   } catch (error) {
     alert('삭제 중 오류가 발생했습니다.')
+  }
+}
+
+const deleteAbsenceReason = async (id, studentId) => {
+  if (!confirm('해당 결석 사유를 삭제하시겠습니까?')) return
+  try {
+    await deleteDoc(doc(db, 'studyAbsenceReasons', id))
+    if (dailyAbsenceReasons.value[studentId]) {
+      delete dailyAbsenceReasons.value[studentId]
+    }
+  } catch (e) {
+    alert('사유 삭제 중 오류가 발생했습니다.')
+  }
+}
+
+const editAbsenceReason = async (id, studentId) => {
+  const currentReason = dailyAbsenceReasons.value[studentId]
+  const newReason = prompt('새로운 사유를 입력하세요:', currentReason.reason)
+  if (newReason === null) return
+  
+  try {
+    await updateDoc(doc(db, 'studyAbsenceReasons', id), {
+      reason: newReason.trim()
+    })
+    dailyAbsenceReasons.value[studentId].reason = newReason.trim()
+  } catch (e) {
+    alert('사유 수정 중 오류가 발생했습니다.')
   }
 }
 
@@ -571,6 +598,10 @@ const downloadCSV = () => {
                     <p class="reason-text"><strong>사유:</strong> {{ dailyAbsenceReasons[app.studentId].reason }}</p>
                     <p class="reason-text"><strong>시간:</strong> {{ dailyAbsenceReasons[app.studentId].periods.join(', ') }}</p>
                     <p v-if="dailyAbsenceReasons[app.studentId].note" class="reason-text note"><strong>메모:</strong> {{ dailyAbsenceReasons[app.studentId].note }}</p>
+                    <div class="reason-actions mt-2" v-if="isSuperAdmin">
+                      <button @click="editAbsenceReason(dailyAbsenceReasons[app.studentId].id, app.studentId)" class="reason-action-btn edit">수정</button>
+                      <button @click="deleteAbsenceReason(dailyAbsenceReasons[app.studentId].id, app.studentId)" class="reason-action-btn delete">삭제</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -891,6 +922,32 @@ const downloadCSV = () => {
   color: #166534;
   font-style: italic;
   margin-top: 4px;
+}
+
+.reason-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.reason-action-btn {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: white;
+}
+
+.reason-action-btn.edit {
+  color: #0D9488;
+  border-color: #0D9488;
+}
+
+.reason-action-btn.delete {
+  color: #DC2626;
+  border-color: #DC2626;
 }
 
 .card-footer {

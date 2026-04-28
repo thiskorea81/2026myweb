@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { collection, addDoc, getDocs, query, where } from 'firebase/firestore'
+import { collection, addDoc, getDocs, query, where, deleteDoc, doc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 
 const studentId = ref('')
@@ -18,6 +18,7 @@ const selectedPeriods = ref([])
 const reason = ref('')
 const customReason = ref('')
 const note = ref('')
+const editModeId = ref(null)
 
 const PERIODS = [
   { key: '8', label: '8교시 (16:40~18:10)' },
@@ -78,41 +79,101 @@ const submitReason = async () => {
   if (!canSubmit.value) return alert('날짜, 빠지는 시간, 사유를 모두 입력해 주세요.')
   isSubmitting.value = true
   try {
-    const docRef = await addDoc(collection(db, 'studyAbsenceReasons'), {
-      studentId: studentId.value.trim(),
-      name: studentName.value.trim(),
-      date: absenceDate.value,
-      periods: selectedPeriods.value,
-      reason: finalReason.value,
-      note: note.value.trim(),
-      confirmed: false,
-      teacherNote: '',
-      submittedAt: new Date().toISOString()
-    })
-    myRequests.value.unshift({
-      id: docRef.id,
-      studentId: studentId.value.trim(),
-      name: studentName.value.trim(),
-      date: absenceDate.value,
-      periods: selectedPeriods.value,
-      reason: finalReason.value,
-      note: note.value.trim(),
-      confirmed: false,
-      teacherNote: '',
-      submittedAt: new Date().toISOString()
-    })
+    if (editModeId.value) {
+      // Update existing record
+      const docRef = doc(db, 'studyAbsenceReasons', editModeId.value)
+      await updateDoc(docRef, {
+        date: absenceDate.value,
+        periods: selectedPeriods.value,
+        reason: finalReason.value,
+        note: note.value.trim()
+      })
+      // Update local list
+      const idx = myRequests.value.findIndex(r => r.id === editModeId.value)
+      if (idx !== -1) {
+        myRequests.value[idx].date = absenceDate.value
+        myRequests.value[idx].periods = selectedPeriods.value
+        myRequests.value[idx].reason = finalReason.value
+        myRequests.value[idx].note = note.value.trim()
+      }
+      isDone.value = true
+      editModeId.value = null
+    } else {
+      // Add new record
+      const docRef = await addDoc(collection(db, 'studyAbsenceReasons'), {
+        studentId: studentId.value.trim(),
+        name: studentName.value.trim(),
+        date: absenceDate.value,
+        periods: selectedPeriods.value,
+        reason: finalReason.value,
+        note: note.value.trim(),
+        confirmed: false,
+        teacherNote: '',
+        submittedAt: new Date().toISOString()
+      })
+      myRequests.value.unshift({
+        id: docRef.id,
+        studentId: studentId.value.trim(),
+        name: studentName.value.trim(),
+        date: absenceDate.value,
+        periods: selectedPeriods.value,
+        reason: finalReason.value,
+        note: note.value.trim(),
+        confirmed: false,
+        teacherNote: '',
+        submittedAt: new Date().toISOString()
+      })
+      isDone.value = true
+    }
+    
     selectedPeriods.value = []
     reason.value = ''
     customReason.value = ''
     note.value = ''
-    absenceDate.value = new Date().toISOString().split('T')[0]
-    isDone.value = true
+    absenceDate.value = getLocalYYYYMMDD()
     setTimeout(() => isDone.value = false, 3000)
   } catch (e) {
     alert('제출 중 오류가 발생했습니다.')
   } finally {
     isSubmitting.value = false
   }
+}
+
+const editReason = (req) => {
+  editModeId.value = req.id
+  absenceDate.value = req.date
+  selectedPeriods.value = [...req.periods]
+  if (REASONS.includes(req.reason)) {
+    reason.value = req.reason
+    customReason.value = ''
+  } else {
+    reason.value = '기타'
+    customReason.value = req.reason
+  }
+  note.value = req.note || ''
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const deleteReason = async (id) => {
+  if (!confirm('이 결석 사유를 삭제하시겠습니까?')) return
+  try {
+    await deleteDoc(doc(db, 'studyAbsenceReasons', id))
+    myRequests.value = myRequests.value.filter(r => r.id !== id)
+    if (editModeId.value === id) {
+      cancelEdit()
+    }
+  } catch (e) {
+    alert('삭제 중 오류가 발생했습니다.')
+  }
+}
+
+const cancelEdit = () => {
+  editModeId.value = null
+  selectedPeriods.value = []
+  reason.value = ''
+  customReason.value = ''
+  note.value = ''
+  absenceDate.value = getLocalYYYYMMDD()
 }
 </script>
 
@@ -216,14 +277,17 @@ const submitReason = async () => {
             ></textarea>
           </div>
 
-          <button
-            @click="submitReason"
-            :disabled="!canSubmit || isSubmitting"
-            class="btn-primary mt-6"
-          >
-            <span v-if="isSubmitting" class="spinner"></span>
-            <span v-else>{{ isDone ? '✅ 제출 완료!' : '결석 사유 제출하기' }}</span>
-          </button>
+          <div class="action-buttons mt-6">
+            <button
+              @click="submitReason"
+              :disabled="!canSubmit || isSubmitting"
+              class="btn-primary"
+            >
+              <span v-if="isSubmitting" class="spinner"></span>
+              <span v-else>{{ isDone ? '✅ 제출 완료!' : (editModeId ? '수정하기' : '결석 사유 제출하기') }}</span>
+            </button>
+            <button v-if="editModeId" @click="cancelEdit" class="btn-cancel">취소</button>
+          </div>
           <p v-if="isDone" class="success-msg">담당 선생님이 확인합니다!</p>
         </div>
 
@@ -243,6 +307,10 @@ const submitReason = async () => {
               </p>
               <p v-if="req.note" class="history-note">메모: {{ req.note }}</p>
               <p v-if="req.teacherNote" class="teacher-note">선생님 비고: {{ req.teacherNote }}</p>
+              <div class="history-actions mt-2" v-if="!req.confirmed">
+                <button @click="editReason(req)" class="action-btn edit-btn">수정</button>
+                <button @click="deleteReason(req.id)" class="action-btn delete-btn">삭제</button>
+              </div>
             </div>
           </div>
         </div>
@@ -456,5 +524,48 @@ const submitReason = async () => {
   0% { opacity: 1; }
   50% { opacity: 0.6; }
   100% { opacity: 1; }
+}
+
+.action-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-cancel {
+  padding: 14px 20px;
+  background: var(--surface);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.history-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.action-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.edit-btn {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.delete-btn {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: #FEF2F2;
 }
 </style>
