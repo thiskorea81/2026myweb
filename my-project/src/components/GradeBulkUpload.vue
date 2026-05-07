@@ -1,8 +1,12 @@
 <script setup>
 import { ref } from 'vue'
 import { useStudentStore } from '../stores/studentStore'
+import { useAiNoteStore } from '../stores/aiNoteStore'
+import { aiService } from '../services/aiService'
+import { getGradeAiNotePrompt } from '../services/aiPrompts'
 
 const studentStore = useStudentStore()
+const aiNoteStore = useAiNoteStore()
 const rawData = ref('')
 const uploadStatus = ref('')
 const isUploading = ref(false)
@@ -20,7 +24,6 @@ const handleGradeUpload = async () => {
     const lines = rawData.value.split('\n').filter(line => line.trim() !== '')
     if (lines.length < 2) throw new Error("데이터가 부족합니다.")
 
-    // CSV(콤마) 또는 TSV(탭)을 모두 인식하여 헤더 분리
     const headers = lines[0].split(/[,\t]/).map(h => h.trim())
     
     const idIdx = headers.findIndex(h => h === '학번')
@@ -43,7 +46,6 @@ const handleGradeUpload = async () => {
       const examName = cols[examIdx]
       if (!studentId || !examName) return
 
-      // 학번과 시험명을 제외한 나머지 항목들은 과목/점수로 동적 처리
       const scores = {}
       headers.forEach((header, idx) => {
         if (idx !== idIdx && idx !== examIdx && cols[idx]) {
@@ -55,8 +57,29 @@ const handleGradeUpload = async () => {
     })
 
     const successCount = await studentStore.bulkUploadGrades(gradeDataList)
-    
-    uploadStatus.value = `성공! 총 ${successCount}건의 성적 데이터가 업데이트되었습니다.`
+    uploadStatus.value = `성적 업로드 성공! (${successCount}건) AI 노트를 생성합니다...`
+
+    // 💡 AI 노트 일괄 생성 로직 추가
+    let aiSuccessCount = 0
+    for (const data of gradeDataList) {
+      const student = studentStore.students.find(s => s.studentId === data.studentId)
+      if (student) {
+        try {
+          const prompt = getGradeAiNotePrompt(student, data.examName, data.scores)
+          const aiResponse = await aiService.askText(prompt)
+          const content = `📊 [성적 기반 자동 분석] - ${data.examName}\n${aiResponse}`
+          await aiNoteStore.addNote(student.id, content)
+          aiSuccessCount++
+          uploadStatus.value = `AI 노트 생성 중... (${aiSuccessCount}/${successCount})`
+        } catch (e) {
+          console.error("AI 노트 생성 실패:", e)
+        }
+        // AI API Rate limit 방지용 딜레이
+        await new Promise(r => setTimeout(r, 2000))
+      }
+    }
+
+    uploadStatus.value = `성공! 성적 ${successCount}건 및 AI 노트 ${aiSuccessCount}건 생성 완료.`
     rawData.value = ''
 
   } catch (error) {

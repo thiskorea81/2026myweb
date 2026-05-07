@@ -6,7 +6,7 @@ import { storeToRefs } from 'pinia'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { aiService } from '../services/aiService' 
-import { recordSchema, getRecordPrompt } from '../services/aiPrompts' 
+import { recordSchema, getRecordPrompt, getGeneralAiNotePrompt } from '../services/aiPrompts' 
 
 // 💡 하위 컴포넌트 임포트 (활동 등록 컴포넌트 포함)
 import StudentBulkUpload from '../components/StudentBulkUpload.vue'
@@ -97,6 +97,46 @@ const handleBulkRecordAi = async () => {
   }
 }
 
+// AI 노트 일괄 생성 로직
+const handleBulkAiNote = async () => {
+  if (selectedIds.value.length === 0 || !confirm('선택한 학생들의 AI 노트를 일괄 생성하시겠습니까?')) return
+  isAiAnalyzing.value = true
+  aiProgress.value = { current: 0, total: selectedIds.value.length, type: 'AI 노트(종합 분석) 생성' }
+
+  try {
+    for (const id of selectedIds.value) {
+      const student = students.value.find(s => s.id === id)
+      if (!student) continue
+
+      // 상담기록 및 출결기록 수집
+      const cSnap = await getDocs(query(collection(db, 'counselingLogs'), where('studentId', '==', id)))
+      const counselText = cSnap.docs.map(d => d.data().content).join(', ') || '없음'
+      
+      const aSnap = await getDocs(query(collection(db, 'attendanceLogs'), where('studentId', '==', id)))
+      const attendText = aSnap.docs.map(d => d.data().status).join(', ') || '없음'
+
+      const obsRecords = `자율(${student.obsAutonomous || '없음'}), 진로(${student.obsCareer || '없음'}), 행동(${student.obsBehavior || '없음'})`
+      const allRecordsText = `상담기록: ${counselText}\n출결현황: ${attendText}\n행동관찰: ${obsRecords}`
+
+      const prompt = getGeneralAiNotePrompt(student, allRecordsText)
+      const aiResponse = await aiService.askText(prompt)
+      
+      const content = `🤖 [전체 종합 분석]\n${aiResponse}`
+      await aiNoteStore.addNote(student.id, content)
+
+      aiProgress.value.current++
+      await new Promise(r => setTimeout(r, 2000)) // Rate limit 방지
+    }
+    alert('AI 노트 일괄 생성이 완료되었습니다.')
+  } catch (error) { 
+    console.error(error)
+    alert('오류 발생: ' + error.message) 
+  } finally { 
+    isAiAnalyzing.value = false
+    selectedIds.value = [] 
+  }
+}
+
 // 일괄 인쇄 로직
 const handleBulkPrint = async () => {
   if (selectedIds.value.length === 0) return
@@ -109,11 +149,14 @@ const handleBulkPrint = async () => {
       const cSnap = await getDocs(query(collection(db, 'counselingLogs'), where('studentId', '==', id)))
       const aSnap = await getDocs(query(collection(db, 'attendanceLogs'), where('studentId', '==', id)))
       const aiSnap = await getDocs(query(collection(db, 'aiNotes'), where('studentId', '==', id)))
+      
+      const sortedAiNotes = aiSnap.docs.map(d=>d.data()).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))
+      
       dataList.push({ 
         student, 
         counselingLogs: cSnap.docs.map(d=>d.data()), 
         attendanceLogs: aSnap.docs.map(d=>d.data()), 
-        aiNotes: aiSnap.docs.map(d=>d.data()) 
+        aiNotes: sortedAiNotes.slice(0, 1) // 일괄 인쇄 시 AI 노트는 가장 마지막(최신) 1개만 포함
       })
     }
     printDataList.value = dataList
@@ -197,16 +240,19 @@ const closeModal = () => { isModalOpen.value = false; selectedStudent.value = nu
         </div>
       </div>
 
-      <div v-if="selectedIds.length > 0" class="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6 flex gap-3 items-center shadow-sm sticky top-0 z-20">
-        <span class="text-sm font-bold text-blue-800 pr-4 border-r border-blue-200">{{ selectedIds.length }}명 선택</span>
-        <button @click="handleBulkPrint" :disabled="isPrinting" class="text-xs md:text-sm px-4 py-2 bg-gray-800 text-white rounded-lg font-bold hover:bg-black transition-colors">
+      <div v-if="selectedIds.length > 0" class="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6 flex gap-3 items-center shadow-sm sticky top-0 z-20 flex-wrap">
+        <span class="text-sm font-bold text-blue-800 pr-4 border-r border-blue-200 whitespace-nowrap">{{ selectedIds.length }}명 선택</span>
+        <button @click="handleBulkPrint" :disabled="isPrinting" class="text-xs md:text-sm px-4 py-2 bg-gray-800 text-white rounded-lg font-bold hover:bg-black transition-colors whitespace-nowrap">
           🖨️ {{ isPrinting ? '준비 중...' : '일괄 인쇄' }}
         </button>
-        <button @click="handleBulkRecordAi" class="text-xs md:text-sm px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg font-bold shadow-sm active:scale-95">
-          📝 AI 생기부 초안 생성
+        <button @click="handleBulkRecordAi" class="text-xs md:text-sm px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg font-bold shadow-sm active:scale-95 whitespace-nowrap">
+          📝 생기부 초안 생성
+        </button>
+        <button @click="handleBulkAiNote" class="text-xs md:text-sm px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg font-bold shadow-sm active:scale-95 whitespace-nowrap">
+          🤖 AI 노트 일괄 생성
         </button>
         <div class="flex-1"></div>
-        <button @click="selectedIds = []" class="text-xs font-bold text-gray-500 hover:underline">선택 해제</button>
+        <button @click="selectedIds = []" class="text-xs font-bold text-gray-500 hover:underline whitespace-nowrap">선택 해제</button>
       </div>
 
       <PhotoBulkUpload v-if="showPhotoUploadArea" />

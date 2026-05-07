@@ -131,8 +131,39 @@ export const getClubRecordPrompt = (student, actsText, obsRecord) => {
     - 관찰메모: ${obsRecord || '없음'}
 
     [규칙]
-    1. 1500바이트 이내, 명사형 종결 사용.
-    2. 책 제목은 '책제목 (저자)' 형식 준수. 맨 앞 어포스트로피 금지.
     3. 순수 JSON 형식 {"clubRecord": "..."}으로 출력하세요.
+  `;
+};
+
+/**
+ * 📊 성적 입력 시 AI 노트 (분석) 생성 프롬프트
+ */
+export const getGradeAiNotePrompt = (student, examName, scores) => {
+  const scoreStr = Object.entries(scores).map(([k, v]) => `${k}: ${v}`).join(", ");
+  return `
+    당신은 훌륭한 담임 교사 비서입니다. 이번에 학생의 새로운 성적이 입력되었습니다.
+    이 성적 데이터를 바탕으로 성취도를 분석하고, 강점/보완점 및 향후 학습 지도 조언을 3문장 내외로 요약해 주세요.
+    
+    [학생 정보]
+    - 이름: ${student.name}
+    - 시험명: ${examName}
+    - 과목별 성적: ${scoreStr}
+  `;
+};
+
+/**
+ * 👨‍🏫 학급관리 전체 선택 시 AI 노트 일괄 생성 프롬프트
+ */
+export const getGeneralAiNotePrompt = (student, allRecordsText) => {
+  return `
+    당신은 훌륭한 담임 교사 비서입니다. 아래 학생의 모든 기록(성적, 상담, 출결, 행동특성 등)을 종합하여,
+    현재 학생의 전반적인 학교 생활 상태와 담임 교사로서 집중해야 할 지도 포인트를 3문장 내외로 요약해 주세요.
+
+    [학생 정보]
+    - 이름: ${student.name}
+    - 진로: ${student.career || '미정'}
+    
+    [종합 기록 내용]
+    ${allRecordsText}
   `;
 };

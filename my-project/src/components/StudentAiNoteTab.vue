@@ -1,11 +1,14 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import { useAiNoteStore } from '../stores/aiNoteStore'
 import { storeToRefs } from 'pinia'
 
 const props = defineProps({
-  student: { type: Object, required: true }
+  student: { type: Object, required: true },
+  modelValue: { type: Array, default: () => [] }
 })
+
+const emit = defineEmits(['update:modelValue'])
 
 const aiNoteStore = useAiNoteStore()
 const { notes } = storeToRefs(aiNoteStore)
@@ -24,6 +27,11 @@ const formatDate = (isoString) => {
   const date = new Date(isoString)
   return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
+
+const selectedIds = computed({
+  get: () => props.modelValue,
+  set: (val) => emit('update:modelValue', val)
+})
 </script>
 
 <template>
@@ -40,7 +48,10 @@ const formatDate = (isoString) => {
     <div class="space-y-4">
       <div v-for="note in notes" :key="note.id" class="bg-indigo-50 border border-indigo-100 p-5 rounded-xl shadow-sm relative group">
         <div class="flex justify-between items-center mb-3">
-          <span class="text-xs font-bold text-indigo-400">🗓️ {{ formatDate(note.createdAt) }}</span>
+          <div class="flex items-center gap-3">
+            <input type="checkbox" v-model="selectedIds" :value="note.id" class="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer" title="인쇄에 포함" />
+            <span class="text-xs font-bold text-indigo-400">🗓️ {{ formatDate(note.createdAt) }}</span>
+          </div>
           <button @click="deleteNote(note.id)" class="text-xs bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-700 px-3 py-1.5 rounded font-bold transition-colors opacity-0 group-hover:opacity-100">
             기록 삭제
           </button>

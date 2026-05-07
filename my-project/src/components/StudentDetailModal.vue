@@ -38,6 +38,14 @@ watch(() => props.student, (newVal) => {
   }
 }, { immediate: true })
 
+const selectedAiNotes = ref([])
+
+watch(aiNotes, (newNotes) => {
+  if (newNotes) {
+    selectedAiNotes.value = newNotes.map(n => n.id) // 기본적으로 모두 선택 상태로 초기화
+  }
+}, { immediate: true })
+
 const currentIndex = computed(() => {
   return props.allStudents.findIndex(s => s.id === props.student.id)
 })
@@ -63,7 +71,7 @@ const singlePrintData = computed(() => [{
   student: props.student,
   counselingLogs: counselingLogs.value,
   attendanceLogs: attendanceLogs.value,
-  aiNotes: aiNotes.value
+  aiNotes: aiNotes.value.filter(n => selectedAiNotes.value.includes(n.id))
 }])
 </script>
 
@@ -119,7 +127,7 @@ const singlePrintData = computed(() => [{
         <StudentCounselTab v-if="activeTab === 'counsel'" :student="student" />
         <StudentAttendanceTab v-if="activeTab === 'attendance'" :student="student" />
         <StudentGradeTab v-if="activeTab === 'grade'" :student="student" />
-        <StudentAiNoteTab v-if="activeTab === 'aiNote'" :student="student" />
+        <StudentAiNoteTab v-if="activeTab === 'aiNote'" :student="student" v-model="selectedAiNotes" />
         <StudentRecordTab v-if="activeTab === 'record'" :student="student" />
       </div>
     </div>
