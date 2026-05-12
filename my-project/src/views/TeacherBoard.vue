@@ -33,10 +33,10 @@ const getBoardInfo = () => {
   let epochKey = '' 
   let morningMode = true
 
-  const afternoonTime = (currentDay === 3) ? 1500 : 1600
+  const afternoonTime = (currentDay === 3) ? 1400 : 1500
 
   if (timeInt >= afternoonTime) {
-    epochKey = (currentDay === 3) ? '1500' : '1600'
+    epochKey = (currentDay === 3) ? '1400' : '1500'
     morningMode = false
   } else if (timeInt >= 800) { 
     epochKey = '0800'
@@ -44,7 +44,7 @@ const getBoardInfo = () => {
   } else {
     targetDbDate.setDate(targetDbDate.getDate() - 1)
     const prevDay = targetDbDate.getDay()
-    epochKey = (prevDay === 3) ? '1500' : '1600'
+    epochKey = (prevDay === 3) ? '1400' : '1500'
     morningMode = false 
   }
 
