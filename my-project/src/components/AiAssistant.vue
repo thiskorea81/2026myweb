@@ -146,6 +146,8 @@ const sendMessage = async () => {
       // 종합 컨텍스트 조립
       contextStr += `\n\n[학급 데이터 컨텍스트]\n- 학생: ${matchedStudent.name} (${matchedStudent.studentId})\n- 진로: ${matchedStudent.career}\n- 장단점: ${matchedStudent.goodPoint}/${matchedStudent.badPoint}\n- 성적: ${JSON.stringify(matchedStudent.grades || [])}\n- 최근상담: ${counselLogs.map(l => l.content).join('; ')}\n- 출결: ${attLogs.map(l => l.type).join(', ')}`
       
+      contextStr += `\n\n[성적 분석 특별 규칙]\n- 성적 데이터에 백분율(%) 수치가 포함되어 있다면, 수치가 낮을수록 우수한 성적입니다.\n- 백분율 수치는 반드시 다음 5등급제로 변환하여 성취도를 평가하고 답변에 반영해 주세요.\n  * 1등급: 10% 이하\n  * 2등급: 10% 초과 ~ 34% 이하\n  * 3등급: 34% 초과 ~ 66% 이하\n  * 4등급: 66% 초과 ~ 90% 이하\n  * 5등급: 90% 초과 ~ 100% 이하`
+      
       if (subjectContext) {
          contextStr += `\n- 교과 수업(세특) 기록:${subjectContext}`
       }
