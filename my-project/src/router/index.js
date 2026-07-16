@@ -69,6 +69,12 @@ const router = createRouter({
       path: '/absence-reason',
       name: 'AbsenceReason',
       component: () => import('../views/AbsenceReasonView.vue')
+    },
+    // 학생 개인 성적 확인 (학생용, 인증 불필요)
+    {
+      path: '/my-grades',
+      name: 'MyGrades',
+      component: () => import('../views/MyGrades.vue')
     }
   ]
 })
