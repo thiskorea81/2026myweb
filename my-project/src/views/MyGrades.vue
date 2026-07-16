@@ -54,13 +54,7 @@ const verifyStudent = async () => {
   }
 }
 
-const resetForm = () => {
-  isVerified.value = false
-  grades.value = []
-  studentId.value = ''
-  parentPhoneLast4.value = ''
-  studentName.value = ''
-}
+
 </script>
 
 <template>
@@ -111,14 +105,9 @@ const resetForm = () => {
       <div v-else class="space-y-4">
 
         <!-- 환영 메시지 -->
-        <div class="bg-indigo-600 text-white rounded-2xl px-6 py-4 font-bold flex items-center justify-between gap-3">
-          <span class="flex items-center gap-3">
-            <span class="text-2xl">👋</span>
-            <span>{{ studentName }}({{ studentId }}) 학생의 성적입니다.</span>
-          </span>
-          <button @click="resetForm" class="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg font-bold whitespace-nowrap">
-            다른 학생 조회
-          </button>
+        <div class="bg-indigo-600 text-white rounded-2xl px-6 py-4 font-bold flex items-center gap-3">
+          <span class="text-2xl">👋</span>
+          <span>{{ studentName }}({{ studentId }}) 학생의 성적입니다.</span>
         </div>
 
         <div v-if="grades.length === 0" class="bg-white rounded-3xl shadow-sm border border-gray-100 p-10 text-center text-gray-400 text-sm">
