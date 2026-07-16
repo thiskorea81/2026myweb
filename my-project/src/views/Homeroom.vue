@@ -6,7 +6,8 @@ import { storeToRefs } from 'pinia'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { aiService } from '../services/aiService' 
-import { recordSchema, getRecordPrompt, getGeneralAiNotePrompt, getGradeAiNotePrompt } from '../services/aiPrompts' 
+import { recordSchema, getRecordPrompt, getGeneralAiNotePrompt, getGradeAiNotePrompt, getStudyAdvicePrompt } from '../services/aiPrompts'
+import { getOrderedScores } from '../utils/gradeUtils'
 
 // 💡 하위 컴포넌트 임포트 (활동 등록 컴포넌트 포함)
 import StudentBulkUpload from '../components/StudentBulkUpload.vue'
@@ -177,6 +178,47 @@ const handleBulkGradeAiNote = async () => {
   }
 }
 
+// 📚 학습조언(강약점 분석) 일괄 생성 로직 - 내신 성적 + 모의고사 성적통지표 원문(세부영역/오답문항)을 함께 분석
+const handleBulkStudyAdvice = async () => {
+  if (selectedIds.value.length === 0 || !confirm('선택한 학생들의 내신/모의고사 성적을 종합 분석하여 학습 조언을 생성하시겠습니까? (학생이 [내 성적 확인]에서 볼 수 있습니다)')) return
+  isAiAnalyzing.value = true
+  aiProgress.value = { current: 0, total: selectedIds.value.length, type: '학습 조언 생성' }
+
+  try {
+    for (const id of selectedIds.value) {
+      const student = students.value.find(s => s.id === id)
+      if (!student) continue
+
+      const gradesSummaryText = (student.grades || [])
+        .map(g => `[${g.examName}] ` + getOrderedScores(g.scores).map(i => `${i.label}:${i.score}`).join(', '))
+        .join('\n')
+
+      const mockExamRaw = student.mockExamRaw || {}
+      const mockExamRawText = Object.entries(mockExamRaw)
+        .map(([examLabel, text]) => `=== ${examLabel} 성적통지표 원문 ===\n${text}`)
+        .join('\n\n')
+
+      const prompt = getStudyAdvicePrompt(student, gradesSummaryText, mockExamRawText)
+      const aiResponse = await aiService.askText(prompt)
+
+      await studentStore.updateStudent(id, {
+        studyAdviceAi: aiResponse,
+        studyAdviceUpdatedAt: new Date().toISOString()
+      })
+
+      aiProgress.value.current++
+      await new Promise(r => setTimeout(r, 2000)) // Rate limit 방지
+    }
+    alert('학습 조언 일괄 생성이 완료되었습니다.')
+  } catch (error) {
+    console.error(error)
+    alert('오류 발생: ' + error.message)
+  } finally {
+    isAiAnalyzing.value = false
+    selectedIds.value = []
+  }
+}
+
 // 일괄 인쇄 로직
 const handleBulkPrint = async () => {
   if (selectedIds.value.length === 0) return
@@ -293,6 +335,9 @@ const closeModal = () => { isModalOpen.value = false; selectedStudent.value = nu
         </button>
         <button @click="handleBulkGradeAiNote" class="text-xs md:text-sm px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg font-bold shadow-sm active:scale-95 whitespace-nowrap">
           🤖 AI 노트(성적상담)
+        </button>
+        <button @click="handleBulkStudyAdvice" class="text-xs md:text-sm px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg font-bold shadow-sm active:scale-95 whitespace-nowrap">
+          📚 학습조언 일괄생성
         </button>
         <div class="flex-1"></div>
         <button @click="selectedIds = []" class="text-xs font-bold text-gray-500 hover:underline whitespace-nowrap">선택 해제</button>

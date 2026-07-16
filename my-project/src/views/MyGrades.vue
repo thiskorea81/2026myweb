@@ -12,6 +12,8 @@ const searchError = ref('')
 
 const studentName = ref('')
 const grades = ref([])
+const studyAdvice = ref('')
+const studyAdviceUpdatedAt = ref('')
 
 // 총점/평균/석차 등 요약 항목 라벨(별칭 포함) 집합 - 성적 아랫줄에 별도로 표시하기 위해 구분
 const summaryLabelSet = new Set(summaryItems.flatMap(item => [item.label, ...item.match]))
@@ -43,8 +45,11 @@ const verifyStudent = async () => {
       searchError.value = '학번/보호자 연락처가 일치하는 학생을 찾을 수 없습니다. 다시 확인해 주세요.'
       return
     }
-    studentName.value = found.data().name
-    grades.value = (found.data().grades || []).slice().reverse()
+    const data = found.data()
+    studentName.value = data.name
+    grades.value = (data.grades || []).slice().reverse()
+    studyAdvice.value = data.studyAdviceAi || ''
+    studyAdviceUpdatedAt.value = data.studyAdviceUpdatedAt || ''
     isVerified.value = true
   } catch (e) {
     console.error(e)
@@ -108,6 +113,17 @@ const verifyStudent = async () => {
         <div class="bg-indigo-600 text-white rounded-2xl px-6 py-4 font-bold flex items-center gap-3">
           <span class="text-2xl">👋</span>
           <span>{{ studentName }}({{ studentId }}) 학생의 성적입니다.</span>
+        </div>
+
+        <!-- AI 학습 조언 (강점/약점 분석) -->
+        <div v-if="studyAdvice" class="bg-white rounded-3xl shadow-lg border border-amber-200 p-6">
+          <div class="flex items-center justify-between mb-3">
+            <span class="font-black text-gray-800 text-lg border-l-4 border-amber-400 pl-2">📚 나의 학습 조언</span>
+            <span v-if="studyAdviceUpdatedAt" class="text-[11px] text-gray-400 font-medium whitespace-nowrap">
+              {{ new Date(studyAdviceUpdatedAt).toLocaleDateString('ko-KR') }} 기준
+            </span>
+          </div>
+          <p class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{{ studyAdvice }}</p>
         </div>
 
         <div v-if="grades.length === 0" class="bg-white rounded-3xl shadow-sm border border-gray-100 p-10 text-center text-gray-400 text-sm">
