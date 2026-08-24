@@ -97,6 +97,18 @@ const formatDate = (isoString) => {
         </div>
       </div>
 
+      <div v-if="data.subjectDrafts && data.subjectDrafts.length > 0" class="print-section mb-8">
+        <h3 class="text-lg font-bold border-b-2 border-gray-800 pb-1 mb-3">6. 교과 세특 (교과별 최종 기록)</h3>
+        <table class="w-full border-collapse border border-gray-400 text-sm">
+          <tbody>
+            <tr v-for="draft in data.subjectDrafts" :key="draft.subject">
+              <th class="border border-gray-400 bg-gray-100 p-2 w-1/6 text-center align-top font-bold text-gray-700">{{ draft.subject }}</th>
+              <td class="border border-gray-400 p-2 whitespace-pre-wrap">{{ draft.content || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
     </div>
   </div>
 </template>

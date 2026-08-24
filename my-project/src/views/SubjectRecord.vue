@@ -1,9 +1,10 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { collection, getDocs, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
+import { collection, getDocs, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import SubjectRosterPanel from '../components/SubjectRosterPanel.vue'
 import SubjectActivityPanel from '../components/SubjectActivityPanel.vue'
+import SubjectActivityBulkUpload from '../components/SubjectActivityBulkUpload.vue'
 
 // 전역 상태
 const students = ref([])
@@ -15,6 +16,61 @@ const isAddingSubject = ref(false)
 // 자식 컴포넌트 간 공유 상태
 const selectedStudent = ref(null)
 const isEditingRoster = ref(false)
+const showActivityUploadArea = ref(false)
+const activityRefreshKey = ref(0)
+const isExporting = ref(false)
+
+const handleBulkUploaded = () => {
+  activityRefreshKey.value++
+}
+
+// 💡 CSV 필드 이스케이프 (쉼표, 줄바꿈, 따옴표 포함 시 큰따옴표로 감싸기)
+const escapeCsvField = (field) => {
+  const str = String(field ?? '')
+  if (/[",\n\r]/.test(str)) return `"${str.replace(/"/g, '""')}"`
+  return str
+}
+
+// 💡 4. 선택된 과목의 활동 기록 전체를 CSV로 내보내기
+const exportActivityRecords = async () => {
+  if (!selectedSubject.value) return
+  isExporting.value = true
+  try {
+    const q = query(collection(db, 'subjectRecords'), where('subject', '==', selectedSubject.value))
+    const snap = await getDocs(q)
+    const records = snap.docs.map(d => d.data())
+
+    if (records.length === 0) {
+      alert('내보낼 활동 기록이 없습니다.')
+      return
+    }
+
+    records.sort((a, b) => {
+      const idCompare = String(a.studentId).localeCompare(String(b.studentId), undefined, { numeric: true })
+      if (idCompare !== 0) return idCompare
+      return new Date(a.date) - new Date(b.date)
+    })
+
+    const header = ['학번', '이름', '날짜', '내용']
+    const rows = records.map(r => [r.studentId, r.studentName, r.date, r.content].map(escapeCsvField).join(','))
+    const csvContent = '﻿' + [header.join(','), ...rows].join('\r\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${selectedSubject.value}_활동기록_${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error(error)
+    alert('내보내기 중 오류가 발생했습니다.')
+  } finally {
+    isExporting.value = false
+  }
+}
 
 // 💡 1. 초기 데이터 로드 (DB에서 과목 리스트와 학생 명단 가져오기)
 onMounted(async () => {
@@ -125,11 +181,25 @@ watch(selectedSubject, () => {
           <button @click="isAddingSubject = false" class="px-2 py-1.5 bg-gray-200 text-gray-800 font-bold rounded text-sm">취소</button>
         </div>
         <div v-else class="flex gap-1 ml-2">
+          <button v-if="selectedSubject" @click="showActivityUploadArea = !showActivityUploadArea" class="px-3 py-2 bg-blue-100 font-bold text-blue-800 rounded-lg text-sm hover:bg-blue-200">
+            {{ showActivityUploadArea ? '창 닫기' : '📥 활동기록 CSV 가져오기' }}
+          </button>
+          <button v-if="selectedSubject" @click="exportActivityRecords" :disabled="isExporting" class="px-3 py-2 bg-green-100 font-bold text-green-800 rounded-lg text-sm hover:bg-green-200 disabled:opacity-50">
+            {{ isExporting ? '내보내는 중...' : '📤 활동기록 CSV 내보내기' }}
+          </button>
           <button @click="isAddingSubject = true" class="px-3 py-2 bg-gray-100 font-bold text-gray-800 rounded-lg text-sm hover:bg-gray-200">➕ 과목 추가</button>
           <button v-if="selectedSubject" @click="deleteSubject(selectedSubject)" class="px-3 py-2 text-red-600 font-bold rounded-lg text-sm hover:bg-red-50">🗑️</button>
         </div>
       </div>
     </div>
+
+    <SubjectActivityBulkUpload
+      v-if="showActivityUploadArea && selectedSubject"
+      :subject="selectedSubject"
+      :students="students"
+      @close="showActivityUploadArea = false"
+      @uploaded="handleBulkUploaded"
+    />
 
     <div class="flex flex-col lg:flex-row gap-6">
       <div class="w-full lg:w-1/3">
@@ -142,10 +212,11 @@ watch(selectedSubject, () => {
       </div>
 
       <div class="w-full lg:w-2/3">
-        <SubjectActivityPanel 
-          :student="selectedStudent" 
-          :subject="selectedSubject" 
-          :isEditingRoster="isEditingRoster" 
+        <SubjectActivityPanel
+          :student="selectedStudent"
+          :subject="selectedSubject"
+          :isEditingRoster="isEditingRoster"
+          :refreshKey="activityRefreshKey"
         />
       </div>
     </div>

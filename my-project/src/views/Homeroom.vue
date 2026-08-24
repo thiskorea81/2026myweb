@@ -34,8 +34,9 @@ watch([myGrade, myClass], ([newGrade, newClass]) => {
 
 // 💡 우리 반 학생만 필터링
 const filteredStudents = computed(() => {
-  return students.value.filter(s => 
-    String(s.grade) === String(myGrade.value) && 
+  return students.value.filter(s =>
+    !s.isArchived &&
+    String(s.grade) === String(myGrade.value) &&
     String(s.class) === String(myClass.value)
   )
 })
