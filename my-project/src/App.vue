@@ -115,7 +115,7 @@ const navGroups = [
 const quickLinks = [
   { path: '/board', target: '_blank', icon: '📢', name: '학생용 조종례', mobileClass: 'bg-indigo-50 text-indigo-700 border border-indigo-200 active:bg-indigo-100' },
   { path: '/teacher-board', target: '_blank', icon: '👨‍🏫', name: '담임용 조종례', mobileClass: 'bg-blue-50 text-blue-700 border border-blue-200 active:bg-blue-100' },
-  { path: '/meal-board', target: '_blank', icon: '🍱', name: '급식 안내', mobileClass: 'bg-emerald-50 text-emerald-700 border border-emerald-200 active:bg-emerald-100' },
+  // 💡 급식 안내(/meal-board)는 잠시 비활성화 - 대신 홈 화면 캘린더에서 바로 보여줌
   { path: '/seats', target: null, icon: '🪑', name: '자리배치', mobileClass: 'bg-amber-50 text-amber-700 border border-amber-200 active:bg-amber-100' },
   { path: '/apply', target: '_blank', icon: '📝', name: '신청폼', mobileClass: 'bg-green-50 text-green-700 border border-green-200 active:bg-green-100' },
 ]
