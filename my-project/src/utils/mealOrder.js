@@ -115,3 +115,24 @@ export function getDayMealInfo(dateStr, classNum) {
 
   return { orderNum, time, isMockExamDay }
 }
+
+// 급식판(MealBoard)용: 특정 날짜 하루, 1~9반 전체의 이동 순서/출발 시각표 (휴업일이면 null)
+// 반환값의 rows는 출발 순서(orderNum) 오름차순으로 정렬되어 있음 - "12:30 5반, 12:32 6반 ..." 형태로 그대로 표시 가능
+export function getDayMealSchedule(dateStr) {
+  if (NO_MEAL_DATES.has(dateStr)) return null
+
+  const week = findWeek(dateStr)
+  if (!week) return null
+
+  const isMockExamDay = MOCK_EXAM_DATES.has(dateStr)
+  const baseStart = isMockExamDay ? '12:10' : '12:30'
+
+  const rows = []
+  for (let classNum = 1; classNum <= 9; classNum++) {
+    const orderNum = ((classNum - week.startClass + 9) % 9) + 1
+    rows.push({ classNum, orderNum, time: addMinutes(baseStart, (orderNum - 1) * 2) })
+  }
+  rows.sort((a, b) => a.orderNum - b.orderNum)
+
+  return { rows, isMockExamDay }
+}
