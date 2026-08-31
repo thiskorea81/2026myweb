@@ -95,7 +95,7 @@ const navMenus = [
 <template>
   <div class="min-h-screen bg-gray-50 flex flex-col font-sans print:bg-white print:min-h-0 relative">
     
-    <header v-if="isLoggedIn && route.name !== 'Apply' && route.name !== 'StudentBoard' && route.name !== 'TeacherBoard'" class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40 print:hidden">
+    <header v-if="isLoggedIn && route.name !== 'Apply' && route.name !== 'StudentBoard' && route.name !== 'TeacherBoard' && route.name !== 'MealBoard'" class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40 print:hidden">
       <div class="w-full px-4 md:px-6 max-w-screen-2xl mx-auto">
         <div class="flex justify-between items-center h-16">
           
@@ -124,7 +124,11 @@ const navMenus = [
             <router-link to="/teacher-board" target="_blank" class="px-2.5 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors whitespace-nowrap" title="담임 교사용 요약 브리핑">
               👨‍🏫 담임용 조종례
             </router-link>
-            
+
+            <router-link to="/meal-board" target="_blank" class="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-colors whitespace-nowrap" title="1학년 급식 시간 + 점심 메뉴">
+              🍱 급식 안내
+            </router-link>
+
             <router-link to="/seats" class="px-2.5 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold hover:bg-amber-100 transition-colors whitespace-nowrap" title="학생 자리배치 관리">
               🪑 자리배치
             </router-link>
@@ -171,6 +175,9 @@ const navMenus = [
             </router-link>
             <router-link to="/teacher-board" target="_blank" class="flex justify-center items-center py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-sm font-bold active:bg-blue-100">
               👨‍🏫 담임용 조종례
+            </router-link>
+            <router-link to="/meal-board" target="_blank" class="flex justify-center items-center py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-sm font-bold active:bg-emerald-100">
+              🍱 급식 안내
             </router-link>
             <router-link to="/seats" class="flex justify-center items-center py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-sm font-bold active:bg-amber-100">
               🪑 자리배치

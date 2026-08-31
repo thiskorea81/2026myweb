@@ -3,6 +3,7 @@ import { db } from '../firebase'
 import { aiService } from './aiService'
 import { announcementSchema, getBoardPrompt } from './aiPrompts'
 import { useStudentStore } from '../stores/studentStore'
+import { getThisWeekMealNote, getNextWeekMealNote } from '../utils/mealOrder'
 
 let timerId = null
 
@@ -28,7 +29,8 @@ export const generateBoard = async (grade, cls, isMorning) => {
     }
 
     const currentDay = targetBoardDate.getDay()
-    const epochKey = isMorning ? '0800' : (currentDay === 3 ? '1500' : '1600')
+    // 💡 StudentBoard.vue/TeacherBoard.vue의 getBoardInfo()와 반드시 같은 키를 써야 화면에 뜬다 (수요일 14:00, 나머지 15:00)
+    const epochKey = isMorning ? '0800' : (currentDay === 3 ? '1400' : '1500')
     const dateString = `${targetBoardDate.getFullYear()}-${String(targetBoardDate.getMonth() + 1).padStart(2, '0')}-${String(targetBoardDate.getDate()).padStart(2, '0')}`
     
     const documentId = `${grade}_${cls}_${dateString}_${epochKey}`
@@ -108,7 +110,20 @@ export const generateBoard = async (grade, cls, isMorning) => {
        }
     }
 
+    // 💡 1학년 급식순서 안내: 월요일 조회 때 "이번 주", 금요일 종례 때 "다음 주" 순서를 함께 공지
+    let mealNote = null
+    if (String(grade) === '1') {
+      if (isMorning && currentDay === 1) {
+        mealNote = getThisWeekMealNote(dateString, Number(cls))
+      } else if (!isMorning && currentDay === 5) {
+        mealNote = getNextWeekMealNote(dateString, Number(cls))
+      }
+    }
+
     let finalContent = ''
+    if (mealNote) {
+       finalContent += `${mealNote}\n\n`
+    }
     if (myClassLogs.length > 0) {
        finalContent += `🏫 [우리 반 알림]\n`
        myClassLogs.forEach((l, i) => {
@@ -183,8 +198,9 @@ export const startAutoBoardTimer = () => {
         }
     }
     
-    // 오후 3시 정각 체크
-    if (hh === 15 && mm === 0) {
+    // 종례 시각 체크 (수요일은 14시, 나머지는 15시)
+    const afternoonHour = currentDay === 3 ? 14 : 15
+    if (hh === afternoonHour && mm === 0) {
         const afternoonKey = `autoBoard_${dateKey}_afternoon`
         if (!localStorage.getItem(afternoonKey)) {
             localStorage.setItem(afternoonKey, 'true')

@@ -2,9 +2,10 @@
 import { ref, onMounted, computed } from 'vue'
 import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import { aiService } from '../services/aiService' 
+import { aiService } from '../services/aiService'
 import { announcementSchema, getTeacherBoardPrompt } from '../services/aiPrompts'
-import { useStudentStore } from '../stores/studentStore' 
+import { useStudentStore } from '../stores/studentStore'
+import { getThisWeekMealNote, getNextWeekMealNote } from '../utils/mealOrder'
 
 const studentStore = useStudentStore()
 const isLoggedIn = computed(() => localStorage.getItem('isLoggedIn') === 'true')
@@ -49,12 +50,12 @@ const getBoardInfo = () => {
   }
 
   const dateString = `${targetDbDate.getFullYear()}-${String(targetDbDate.getMonth()+1).padStart(2,'0')}-${String(targetDbDate.getDate()).padStart(2,'0')}`
-  const documentId = `${dateString}_${epochKey}` 
+  const documentId = `${dateString}_${epochKey}`
 
   let logTargetDate = new Date(targetDbDate)
-  if (epochKey === '0800') logTargetDate.setDate(logTargetDate.getDate() - 1) 
+  if (epochKey === '0800') logTargetDate.setDate(logTargetDate.getDate() - 1)
 
-  return { documentId, logTargetDate, morningMode }
+  return { documentId, logTargetDate, morningMode, dateString, dayOfWeek: targetDbDate.getDay() }
 }
 
 const loadBoardContent = async (forceRegenerate = false) => {
@@ -164,8 +165,21 @@ const loadBoardContent = async (forceRegenerate = false) => {
        }
     }
 
+    // 💡 1학년 급식순서 안내: 월요일 조회 때 "이번 주", 금요일 종례 때 "다음 주" 순서를 함께 공지
+    let mealNote = null
+    if (String(viewGrade.value) === '1') {
+      if (info.morningMode && info.dayOfWeek === 1) {
+        mealNote = getThisWeekMealNote(info.dateString, Number(viewClass.value))
+      } else if (!info.morningMode && info.dayOfWeek === 5) {
+        mealNote = getNextWeekMealNote(info.dateString, Number(viewClass.value))
+      }
+    }
+
     // 💡 우리 반 알림 + 공통 공지사항 조립 (스마트 병합)
     let finalContent = ''
+    if (mealNote) {
+       finalContent += `${mealNote}\n\n`
+    }
     if (myClassLogs.length > 0) {
        finalContent += `🏫 [우리 반 알림]\n`
        myClassLogs.forEach((l, i) => {
