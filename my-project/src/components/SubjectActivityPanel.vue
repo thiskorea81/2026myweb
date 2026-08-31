@@ -7,7 +7,8 @@ import SubjectDraftPanel from './SubjectDraftPanel.vue'
 const props = defineProps({
   student: { type: Object, default: null },
   subject: { type: String, required: true },
-  isEditingRoster: { type: Boolean, default: false }
+  isEditingRoster: { type: Boolean, default: false },
+  refreshKey: { type: Number, default: 0 }
 })
 
 const records = ref([])
@@ -29,7 +30,7 @@ const fetchRecords = async () => {
   } catch (error) { console.error("기록 로드 에러:", error) } finally { isLoadingRecords.value = false }
 }
 
-watch(() => [props.student?.studentId, props.subject], fetchRecords, { immediate: true })
+watch(() => [props.student?.studentId, props.subject, props.refreshKey], fetchRecords, { immediate: true })
 
 const saveRecord = async () => {
   if (!recordContent.value.trim() || !recordDate.value) return alert('내용을 입력해주세요.')

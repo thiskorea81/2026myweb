@@ -36,11 +36,12 @@ onMounted(fetchStudents)
 // 필터링
 const filteredStudents = computed(() => {
   return students.value.filter(s => {
+    if (s.isArchived) return false
     const matchGrade = selectedGrade.value === '전체' || String(s.grade) === selectedGrade.value
     const matchClass = selectedClass.value === '전체' || String(s.class) === selectedClass.value
     const q = searchQuery.value.trim()
-    const matchSearch = !q || 
-      (s.name && s.name.includes(q)) || 
+    const matchSearch = !q ||
+      (s.name && s.name.includes(q)) ||
       (s.studentId && String(s.studentId).includes(q)) ||
       (s.phone && s.phone.includes(q))
     return matchGrade && matchClass && matchSearch
