@@ -278,7 +278,7 @@ const handleDocumentClick = (e) => {
       <router-view />
     </main>
 
-    <AiAssistant v-if="isLoggedIn" />
+    <AiAssistant v-if="isLoggedIn && route.name !== 'Apply' && route.name !== 'StudentBoard' && route.name !== 'TeacherBoard' && route.name !== 'MealBoard'" />
 
   </div>
 </template>
