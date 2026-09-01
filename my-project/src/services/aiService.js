@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { z } from "zod";
 
 let aiClient = null;
 const MODEL_NAME = "gemini-3-flash-preview"; 
@@ -73,6 +73,10 @@ export const aiService = {
     }
   },
 
+  // 💡 스키마를 실제 JSON Schema로 바꿀 때는 zod v4에 내장된 z.toJSONSchema()를 쓴다.
+  // (구버전에 쓰던 zod-to-json-schema 패키지는 zod v4 스키마 내부 구조를 이해하지 못해서
+  //  껍데기만 있는 빈 스키마를 만들어냈다 - Gemini에게 필드 제약을 사실상 전달 못 하고
+  //  있었던 셈. 프롬프트 문구로만 형식을 강제하던 것에서 실제 스키마 제약을 받게 됨.)
   async askStructured(prompt, schema) {
     try {
       const ai = getAiClient();
@@ -81,7 +85,7 @@ export const aiService = {
         contents: prompt,
         config: {
           responseMimeType: "application/json",
-          responseJsonSchema: zodToJsonSchema(schema)
+          responseJsonSchema: z.toJSONSchema(schema)
         }
       });
 
@@ -98,6 +102,36 @@ export const aiService = {
         console.error("❌ 데이터 구조 검증 실패 (ZodError):", error.errors);
       }
       console.error("AI 구조화 데이터 요청 실패:", error);
+      throw error;
+    }
+  },
+
+  // 💡 여러 항목(예: 학생 여러 명)을 한 번의 요청으로 처리해 JSON 배열로 돌려받음.
+  // askStructured는 응답이 배열이면 첫 원소만 취하는 단일 객체용이라, 배열 자체가
+  // 결과인 배치 처리에는 이 함수를 쓴다 (학생 수만큼 순차 호출하는 것을 피하기 위함).
+  async askStructuredArray(prompt, itemSchema) {
+    const arraySchema = z.array(itemSchema);
+    try {
+      const ai = getAiClient();
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseJsonSchema: z.toJSONSchema(arraySchema)
+        }
+      });
+
+      const rawText = response.text.trim();
+      const jsonData = JSON.parse(rawText);
+      const arrayData = Array.isArray(jsonData) ? jsonData : [jsonData];
+      return arraySchema.parse(arrayData);
+
+    } catch (error) {
+      if (error.name === "ZodError") {
+        console.error("❌ 데이터 구조 검증 실패 (ZodError):", error.errors);
+      }
+      console.error("AI 배치 구조화 데이터 요청 실패:", error);
       throw error;
     }
   },

@@ -24,6 +24,12 @@ export const announcementSchema = z.object({
   closing: z.string().describe("따뜻하고 짧은 격려의 끝인사")
 });
 
+// 💡 여러 학생을 한 번에 분석할 때, 학생 한 명당 결과 한 개의 구조 (studentId로 원래 학생과 매칭)
+export const gradeAiNoteItemSchema = z.object({
+  studentId: z.string().describe("입력에 주어진 studentId를 그대로 반환 (변형 금지)"),
+  note: z.string().describe("그 학생에 대한 성적 분석 코멘트 (3문장 내외)")
+});
+
 
 /**
  * ==========================================
@@ -157,6 +163,38 @@ export const getGradeAiNotePrompt = (student, examName, scores) => {
     - 이름: ${student.name}
     - 시험명: ${examName}
     - 과목별 성적: ${scoreStr}
+  `;
+};
+
+/**
+ * 📊 성적 기반 AI 노트를 여러 학생 한 번에 생성하는 프롬프트 (개별 호출 대신 배치 처리용)
+ * @param {Array<{studentId: string, name: string, examName: string, scores: object}>} studentsData
+ */
+export const getBulkGradeAiNotePrompt = (studentsData) => {
+  const studentBlocks = studentsData.map(s => {
+    const scoreStr = Object.entries(s.scores).map(([k, v]) => `${k}: ${v}`).join(", ");
+    return `- studentId: ${s.studentId} | 이름: ${s.name} | 시험명: ${s.examName} | 과목별 성적: ${scoreStr}`;
+  }).join('\n');
+
+  return `
+    당신은 훌륭한 담임 교사 비서입니다. 여러 학생의 새로운 성적이 한꺼번에 입력되었습니다.
+    학생별로 성취도를 분석하고, 강점/보완점 및 향후 학습 지도 조언을 3문장 내외로 요약해 주세요.
+
+    [성적 분석 특별 규칙]
+    - 과목별 성적에 백분율(%) 수치가 포함되어 있다면, 수치가 낮을수록 우수한 성적입니다.
+    - 백분율 수치는 반드시 다음 5등급제로 변환하여 분석 및 상담일지에 반영해 주세요.
+      * 1등급: 10% 이하
+      * 2등급: 10% 초과 ~ 34% 이하
+      * 3등급: 34% 초과 ~ 66% 이하
+      * 4등급: 66% 초과 ~ 90% 이하
+      * 5등급: 90% 초과 ~ 100% 이하
+
+    [출력 형식 - 절대 엄수]
+    - 아래 [학생 목록]과 정확히 같은 수의 원소를 가진 JSON 배열로만 응답하세요.
+    - 각 원소는 { "studentId": "...", "note": "..." } 형태이며, studentId는 입력값을 그대로 사용하세요.
+
+    [학생 목록]
+    ${studentBlocks}
   `;
 };
 

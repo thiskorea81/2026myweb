@@ -6,7 +6,7 @@ import { storeToRefs } from 'pinia'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import { aiService } from '../services/aiService' 
-import { recordSchema, getRecordPrompt, getGeneralAiNotePrompt, getGradeAiNotePrompt, getStudyAdvicePrompt } from '../services/aiPrompts'
+import { recordSchema, getRecordPrompt, getGeneralAiNotePrompt, getBulkGradeAiNotePrompt, gradeAiNoteItemSchema, getStudyAdvicePrompt } from '../services/aiPrompts'
 import { getOrderedScores } from '../utils/gradeUtils'
 
 // 💡 하위 컴포넌트 임포트 (활동 등록 컴포넌트 포함)
@@ -139,43 +139,47 @@ const handleBulkAiNote = async () => {
   }
 }
 
-// AI 노트(성적상담) 일괄 생성 로직
+// AI 노트(성적상담) 일괄 생성 로직 - 학생마다 따로 호출하지 않고, 선택된 학생 전체를
+// 한 번의 프롬프트에 묶어 배열로 응답받는다 (N번 호출 + 매번 2초 대기하던 방식을 대체)
 const handleBulkGradeAiNote = async () => {
   if (selectedIds.value.length === 0 || !confirm('선택한 학생들의 최신 성적을 바탕으로 AI 노트(성적상담)를 일괄 생성하시겠습니까?')) return
   isAiAnalyzing.value = true
   aiProgress.value = { current: 0, total: selectedIds.value.length, type: 'AI 노트(성적상담) 생성' }
 
   try {
-    for (const id of selectedIds.value) {
-      const student = students.value.find(s => s.id === id)
-      if (!student) continue
+    const targets = selectedIds.value
+      .map(id => {
+        const student = students.value.find(s => s.id === id)
+        const grades = student?.grades || []
+        if (!student || grades.length === 0) return null
+        // 최신 성적 추출
+        const latestGrade = [...grades].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
+        return { studentId: id, name: student.name, examName: latestGrade.examName, scores: latestGrade.scores }
+      })
+      .filter(Boolean)
 
-      const grades = student.grades || []
-      if (grades.length === 0) {
-         // 성적이 없으면 생성 불가능
-         aiProgress.value.current++
-         continue;
-      }
-      
-      // 최신 성적 추출
-      const latestGrade = [...grades].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
-
-      const prompt = getGradeAiNotePrompt(student, latestGrade.examName, latestGrade.scores)
-      const aiResponse = await aiService.askText(prompt)
-      
-      const content = `📊 [성적 기반 자동 분석] - ${latestGrade.examName}\n${aiResponse}`
-      await aiNoteStore.addNote(student.id, content)
-
-      aiProgress.value.current++
-      await new Promise(r => setTimeout(r, 2000)) // Rate limit 방지
+    if (targets.length === 0) {
+      alert('선택한 학생 중 등록된 성적이 있는 학생이 없습니다.')
+      return
     }
-    alert('AI 노트(성적상담) 일괄 생성이 완료되었습니다.')
-  } catch (error) { 
+
+    const prompt = getBulkGradeAiNotePrompt(targets)
+    const results = await aiService.askStructuredArray(prompt, gradeAiNoteItemSchema)
+
+    for (const result of results) {
+      const target = targets.find(t => t.studentId === result.studentId)
+      if (!target) continue
+      const content = `📊 [성적 기반 자동 분석] - ${target.examName}\n${result.note}`
+      await aiNoteStore.addNote(result.studentId, content)
+      aiProgress.value.current++
+    }
+    alert(`AI 노트(성적상담) 일괄 생성이 완료되었습니다. (${aiProgress.value.current}명)`)
+  } catch (error) {
     console.error(error)
-    alert('오류 발생: ' + error.message) 
-  } finally { 
+    alert('오류 발생: ' + error.message)
+  } finally {
     isAiAnalyzing.value = false
-    selectedIds.value = [] 
+    selectedIds.value = []
   }
 }
 

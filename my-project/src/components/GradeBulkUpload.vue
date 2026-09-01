@@ -1,12 +1,8 @@
 <script setup>
 import { ref } from 'vue'
 import { useStudentStore } from '../stores/studentStore'
-import { useAiNoteStore } from '../stores/aiNoteStore'
-import { aiService } from '../services/aiService'
-import { getGradeAiNotePrompt } from '../services/aiPrompts'
 
 const studentStore = useStudentStore()
-const aiNoteStore = useAiNoteStore()
 const rawData = ref('')
 const uploadStatus = ref('')
 const isUploading = ref(false)
@@ -57,29 +53,7 @@ const handleGradeUpload = async () => {
     })
 
     const successCount = await studentStore.bulkUploadGrades(gradeDataList)
-    uploadStatus.value = `성적 업로드 성공! (${successCount}건) AI 노트를 생성합니다...`
-
-    // 💡 AI 노트 일괄 생성 로직 추가
-    let aiSuccessCount = 0
-    for (const data of gradeDataList) {
-      const student = studentStore.students.find(s => s.studentId === data.studentId)
-      if (student) {
-        try {
-          const prompt = getGradeAiNotePrompt(student, data.examName, data.scores)
-          const aiResponse = await aiService.askText(prompt)
-          const content = `📊 [성적 기반 자동 분석] - ${data.examName}\n${aiResponse}`
-          await aiNoteStore.addNote(student.id, content)
-          aiSuccessCount++
-          uploadStatus.value = `AI 노트 생성 중... (${aiSuccessCount}/${successCount})`
-        } catch (e) {
-          console.error("AI 노트 생성 실패:", e)
-        }
-        // AI API Rate limit 방지용 딜레이
-        await new Promise(r => setTimeout(r, 2000))
-      }
-    }
-
-    uploadStatus.value = `성공! 성적 ${successCount}건 및 AI 노트 ${aiSuccessCount}건 생성 완료.`
+    uploadStatus.value = `성공! 성적 ${successCount}건 등록 완료. (AI 노트는 명렬표에서 학생을 선택한 뒤 '🤖 AI 노트(성적상담)' 버튼으로 생성하세요)`
     rawData.value = ''
 
   } catch (error) {
