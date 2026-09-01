@@ -115,7 +115,6 @@ const navGroups = [
 const quickLinks = [
   { path: '/board', target: '_blank', icon: '📢', name: '학생용 조종례', mobileClass: 'bg-indigo-50 text-indigo-700 border border-indigo-200 active:bg-indigo-100' },
   { path: '/teacher-board', target: '_blank', icon: '👨‍🏫', name: '담임용 조종례', mobileClass: 'bg-blue-50 text-blue-700 border border-blue-200 active:bg-blue-100' },
-  { path: '/meal-board', target: '_blank', icon: '🍱', name: '급식 안내', mobileClass: 'bg-emerald-50 text-emerald-700 border border-emerald-200 active:bg-emerald-100' },
   { path: '/seats', target: null, icon: '🪑', name: '자리배치', mobileClass: 'bg-amber-50 text-amber-700 border border-amber-200 active:bg-amber-100' },
   { path: '/apply', target: '_blank', icon: '📝', name: '신청폼', mobileClass: 'bg-green-50 text-green-700 border border-green-200 active:bg-green-100' },
 ]
@@ -140,7 +139,7 @@ const handleDocumentClick = (e) => {
 <template>
   <div class="min-h-screen bg-gray-50 flex flex-col font-sans print:bg-white print:min-h-0 relative">
     
-    <header ref="headerRef" v-if="isLoggedIn && route.name !== 'Apply' && route.name !== 'StudentBoard' && route.name !== 'TeacherBoard' && route.name !== 'MealBoard'" class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40 print:hidden">
+    <header ref="headerRef" v-if="isLoggedIn && route.name !== 'Apply' && route.name !== 'StudentBoard' && route.name !== 'TeacherBoard'" class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40 print:hidden">
       <div class="w-full px-4 md:px-6 max-w-screen-2xl mx-auto">
         <div class="flex justify-between items-center h-16">
           
@@ -278,7 +277,7 @@ const handleDocumentClick = (e) => {
       <router-view />
     </main>
 
-    <AiAssistant v-if="isLoggedIn && route.name !== 'Apply' && route.name !== 'StudentBoard' && route.name !== 'TeacherBoard' && route.name !== 'MealBoard'" />
+    <AiAssistant v-if="isLoggedIn && route.name !== 'Apply' && route.name !== 'StudentBoard' && route.name !== 'TeacherBoard'" />
 
   </div>
 </template>

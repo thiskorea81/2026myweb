@@ -1,9 +1,7 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useDiaryStore } from '../stores/diaryStore'
 import { storeToRefs } from 'pinia'
-import { getDayMealInfo } from '../utils/mealOrder'
-import { fetchMonthlyLunchMenu } from '../services/neisMealService'
 
 const diaryStore = useDiaryStore()
 const { diaries } = storeToRefs(diaryStore)
@@ -22,28 +20,6 @@ const currentMonth = computed(() => currentDate.value.getMonth())
 const prevMonth = () => { currentDate.value = new Date(currentYear.value, currentMonth.value - 1, 1) }
 const nextMonth = () => { currentDate.value = new Date(currentYear.value, currentMonth.value + 1, 1) }
 const goToday = () => { currentDate.value = new Date() }
-
-// 💡 급식 안내: 1학년 담임 학급의 급식 시간 + NEIS 점심 메뉴를 달력 칸에 함께 표시
-const myGrade = localStorage.getItem('myGrade') || '1'
-const myClass = localStorage.getItem('myClass') || '1'
-
-const lunchMenuByDate = ref({}) // { 'YYYYMMDD': { menu, calorie } }
-
-const loadLunchMenu = async () => {
-  const yearMonth = `${currentYear.value}${String(currentMonth.value + 1).padStart(2, '0')}`
-  lunchMenuByDate.value = await fetchMonthlyLunchMenu(yearMonth)
-}
-
-watch([currentYear, currentMonth], loadLunchMenu, { immediate: true })
-
-const getMealInfoForDay = (dateObj) => {
-  const dateStr = formatDate(dateObj)
-  const dayKey = dateStr.replaceAll('-', '')
-  const menu = lunchMenuByDate.value[dayKey] || null
-  const mealTime = String(myGrade) === '1' ? getDayMealInfo(dateStr, Number(myClass)) : null
-  if (!menu && !mealTime) return null
-  return { menu, mealTime }
-}
 
 // 날짜를 YYYY-MM-DD 문자열로 변환하는 함수 (비교 및 저장용)
 const formatDate = (dateObj) => {
@@ -75,8 +51,6 @@ const calendarDays = computed(() => {
   for (let i = 1; i <= remainingDays; i++) {
     daysArray.push({ date: new Date(year, month + 1, i), isCurrentMonth: false, isToday: false })
   }
-
-  daysArray.forEach(day => { day.mealInfo = getMealInfoForDay(day.date) })
 
   return daysArray
 })
@@ -134,7 +108,7 @@ const handleDelete = (id) => {
 
       <div class="grid grid-cols-7 gap-px flex-1 bg-gray-200">
         <div v-for="(day, index) in calendarDays" :key="index" @click="openModal(day)"
-          class="bg-white p-2 min-h-[120px] 2xl:min-h-[168px] cursor-pointer hover:bg-blue-50 transition-colors flex flex-col group"
+          class="bg-white p-2 min-h-[120px] cursor-pointer hover:bg-blue-50 transition-colors flex flex-col group"
           :class="!day.isCurrentMonth ? 'opacity-40 bg-gray-50' : ''">
 
           <div class="flex justify-between items-start mb-1">
@@ -148,15 +122,6 @@ const handleDelete = (id) => {
               {{ day.date.getDate() }}
             </span>
             <span class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 font-bold">+</span>
-          </div>
-
-          <div v-if="day.mealInfo" class="mb-1 rounded-md bg-emerald-50 border border-emerald-100 px-1.5 py-1 shrink-0" @click.stop>
-            <div v-if="day.mealInfo.mealTime" class="text-[10px] font-bold text-emerald-700 mb-0.5">
-              🚶 {{ day.mealInfo.mealTime.orderNum }}번째 · {{ day.mealInfo.mealTime.time }}
-            </div>
-            <div v-if="day.mealInfo.menu" class="text-[10px] text-emerald-800 leading-snug line-clamp-3 2xl:line-clamp-4 whitespace-pre-line" :title="day.mealInfo.menu.menu">
-              🍚 {{ day.mealInfo.menu.menu }}
-            </div>
           </div>
 
           <div class="flex-1 overflow-y-auto space-y-1">
@@ -176,10 +141,10 @@ const handleDelete = (id) => {
         <h3 class="text-lg font-bold mb-4">
           {{ selectedDate?.getFullYear() }}년 {{ selectedDate?.getMonth() + 1 }}월 {{ selectedDate?.getDate() }}일 일정 추가
         </h3>
-        <input 
-          v-model="newDiaryText" 
-          type="text" 
-          placeholder="일정 내용을 입력하세요" 
+        <input
+          v-model="newDiaryText"
+          type="text"
+          placeholder="일정 내용을 입력하세요"
           class="w-full p-2 border border-gray-300 rounded mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
           @keyup.enter="saveDiary"
           autofocus

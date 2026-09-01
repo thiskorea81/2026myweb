@@ -81,12 +81,6 @@ const router = createRouter({
       path: '/my-grades',
       name: 'MyGrades',
       component: () => import('../views/MyGrades.vue')
-    },
-    // 1학년 급식 시간 + 점심 메뉴 게시판 (학생용, 인증 불필요)
-    {
-      path: '/meal-board',
-      name: 'MealBoard',
-      component: () => import('../views/MealBoard.vue')
     }
   ]
 })

@@ -29,21 +29,6 @@ const WEEKS = [
 // 모의고사일 (12:10 출발 기준으로 당겨짐)
 const MOCK_EXAM_DATES = new Set(['2026-09-02', '2026-10-20'])
 
-// 급식(등교) 자체가 없는 날 - 이 날짜들은 개별 급식시간 조회 시 "급식 없음"으로 처리
-const NO_MEAL_DATES = new Set([
-  '2026-09-24', '2026-09-25', // 추석 연휴
-  '2026-10-05', // 개천절 대체공휴일
-  '2026-10-09', // 한글날
-  '2026-10-16', // 시험 마지막날
-  '2026-11-18', '2026-11-19', // 대학수학능력시험 전날/당일
-  '2026-12-11', // 시험 마지막날
-  '2026-12-25', // 성탄절
-  '2026-12-30', // 겨울방학식
-  '2026-12-31', '2027-01-01', // 겨울방학 기간(원본 표에는 순서가 남아있으나 실제로는 등교하지 않음)
-  '2027-02-03', // 졸업식
-  '2027-02-05', // 종업식
-])
-
 function findWeek(dateStr) {
   return WEEKS.find(w => dateStr >= w.start && dateStr <= w.end) || null
 }
@@ -100,39 +85,4 @@ export function getNextWeekMealNote(fridayDateStr, classNum) {
   const info = getWeekOrderInfo(nextMonday, classNum)
   if (!info) return null
   return `🍱 [다음 주 급식 순서 예고] 우리 반은 ${info.orderNum}번째로 이동, 12:30 기준 ${info.time} 출발 예정입니다.${info.mockNote}`
-}
-
-// 급식판(MealBoard)용: 특정 날짜 하루의 정확한 급식 이동 순서/출발 시각 (휴업일이면 null)
-export function getDayMealInfo(dateStr, classNum) {
-  if (NO_MEAL_DATES.has(dateStr)) return null
-
-  const week = findWeek(dateStr)
-  if (!week) return null
-
-  const orderNum = ((classNum - week.startClass + 9) % 9) + 1
-  const isMockExamDay = MOCK_EXAM_DATES.has(dateStr)
-  const time = addMinutes(isMockExamDay ? '12:10' : '12:30', (orderNum - 1) * 2)
-
-  return { orderNum, time, isMockExamDay }
-}
-
-// 급식판(MealBoard)용: 특정 날짜 하루, 1~9반 전체의 이동 순서/출발 시각표 (휴업일이면 null)
-// 반환값의 rows는 출발 순서(orderNum) 오름차순으로 정렬되어 있음 - "12:30 5반, 12:32 6반 ..." 형태로 그대로 표시 가능
-export function getDayMealSchedule(dateStr) {
-  if (NO_MEAL_DATES.has(dateStr)) return null
-
-  const week = findWeek(dateStr)
-  if (!week) return null
-
-  const isMockExamDay = MOCK_EXAM_DATES.has(dateStr)
-  const baseStart = isMockExamDay ? '12:10' : '12:30'
-
-  const rows = []
-  for (let classNum = 1; classNum <= 9; classNum++) {
-    const orderNum = ((classNum - week.startClass + 9) % 9) + 1
-    rows.push({ classNum, orderNum, time: addMinutes(baseStart, (orderNum - 1) * 2) })
-  }
-  rows.sort((a, b) => a.orderNum - b.orderNum)
-
-  return { rows, isMockExamDay }
 }
