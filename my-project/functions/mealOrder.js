@@ -26,8 +26,18 @@ const WEEKS = [
   { start: '2027-02-01', end: '2027-02-05', startClass: 5 },
 ]
 
-// 모의고사일 (12:10 출발 기준으로 당겨짐)
-const MOCK_EXAM_DATES = new Set(['2026-09-02', '2026-10-20'])
+// 시험 기간 - 급식 시작시간이 평상시(12:30)와 다른 날 (원본 파일 [시험 기간 - 급식 시작시간 변경] 참고)
+const SPECIAL_START_DAYS = {
+  '2026-09-02': { time: '12:00', note: '모의고사일' },
+  '2026-10-20': { time: '12:00', note: '모의고사일' },
+  '2026-10-13': { time: '12:10', note: '중간고사 기간' },
+  '2026-10-14': { time: '12:10', note: '중간고사 기간' },
+  '2026-10-15': { time: '12:10', note: '중간고사 기간' },
+  '2026-12-07': { time: '12:10', note: '기말고사 기간' },
+  '2026-12-08': { time: '12:10', note: '기말고사 기간' },
+  '2026-12-09': { time: '12:10', note: '기말고사 기간' },
+  '2026-12-10': { time: '12:10', note: '기말고사 기간' },
+}
 
 function findWeek(dateStr) {
   return WEEKS.find(w => dateStr >= w.start && dateStr <= w.end) || null
@@ -64,19 +74,32 @@ function getWeekOrderInfo(referenceDateStr, classNum) {
   const orderNum = ((classNum - week.startClass + 9) % 9) + 1
   const time = addMinutes('12:30', (orderNum - 1) * 2)
 
-  const mockDatesInWeek = [...MOCK_EXAM_DATES].filter(d => d >= week.start && d <= week.end)
-  const mockNote = mockDatesInWeek.length > 0
-    ? ` (단, ${mockDatesInWeek.map(formatKoreanDate).join(', ')}은 모의고사일이라 ${addMinutes('12:10', (orderNum - 1) * 2)} 출발)`
-    : ''
+  // 그 주 안에 있는 시험일들을 (문구, 기준시각)별로 묶어서 안내 (한 주에 모의고사/중간고사가 섞일 일은 없지만 방어적으로 처리)
+  const specialDatesInWeek = Object.keys(SPECIAL_START_DAYS).filter(d => d >= week.start && d <= week.end)
+  let specialNote = ''
+  if (specialDatesInWeek.length > 0) {
+    const groups = new Map()
+    specialDatesInWeek.forEach(d => {
+      const { time: baseTime, note } = SPECIAL_START_DAYS[d]
+      const key = `${note}|${baseTime}`
+      if (!groups.has(key)) groups.set(key, { note, baseTime, dates: [] })
+      groups.get(key).dates.push(d)
+    })
+    specialNote = [...groups.values()].map(g => {
+      const dateLabel = g.dates.map(formatKoreanDate).join(', ')
+      const adjustedTime = addMinutes(g.baseTime, (orderNum - 1) * 2)
+      return ` (단, ${dateLabel}은 ${g.note}이라 ${adjustedTime} 출발)`
+    }).join('')
+  }
 
-  return { orderNum, time, mockNote }
+  return { orderNum, time, specialNote }
 }
 
 // 월요일 조회용: "이번 주" 급식 순서 안내문
 function getThisWeekMealNote(mondayDateStr, classNum) {
   const info = getWeekOrderInfo(mondayDateStr, classNum)
   if (!info) return null
-  return `🍱 [이번 주 급식 순서] 우리 반은 ${info.orderNum}번째로 이동, 12:30 기준 ${info.time} 출발입니다.${info.mockNote}`
+  return `🍱 [이번 주 급식 순서] 우리 반은 ${info.orderNum}번째로 이동, 12:30 기준 ${info.time} 출발입니다.${info.specialNote}`
 }
 
 // 금요일 종례용: "다음 주" 급식 순서 예고문
@@ -84,7 +107,7 @@ function getNextWeekMealNote(fridayDateStr, classNum) {
   const nextMonday = addDays(fridayDateStr, 3)
   const info = getWeekOrderInfo(nextMonday, classNum)
   if (!info) return null
-  return `🍱 [다음 주 급식 순서 예고] 우리 반은 ${info.orderNum}번째로 이동, 12:30 기준 ${info.time} 출발 예정입니다.${info.mockNote}`
+  return `🍱 [다음 주 급식 순서 예고] 우리 반은 ${info.orderNum}번째로 이동, 12:30 기준 ${info.time} 출발 예정입니다.${info.specialNote}`
 }
 
 module.exports = { getThisWeekMealNote, getNextWeekMealNote }
