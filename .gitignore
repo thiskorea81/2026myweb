@@ -18,3 +18,5 @@
 
 # Netlify 배포 산출물
 /my-project/.netlify/
+
+/data

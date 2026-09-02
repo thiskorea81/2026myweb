@@ -108,6 +108,7 @@ const navGroups = [
     label: '운영', icon: '⚙️',
     items: [
       { path: '/worklog', icon: '📓', name: '업무일지' },
+      { path: '/schedule', icon: '🗓️', name: '창체 일정' },
       { path: '/board-admin', icon: '📋', name: '조종례 관리' },
       { path: '/admin', icon: '📊', name: '자율학습 관리' },
       { path: '/tts', icon: '🗣️', name: '방송 TTS' },

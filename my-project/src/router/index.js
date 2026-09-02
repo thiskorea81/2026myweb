@@ -64,6 +64,12 @@ const router = createRouter({
       component: () => import('../views/DataExport.vue'),
       meta: { requiresAuth: true }
     },
+    {
+      path: '/schedule',
+      name: 'Schedule',
+      component: () => import('../views/Schedule.vue'),
+      meta: { requiresAuth: true }
+    },
     // 💡 새로 추가된 TTS 방송국 라우트
     {
       path: '/tts',
