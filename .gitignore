@@ -2,3 +2,18 @@
 .env
 .DS_Store
 .DS_Store
+
+# 학생 개인정보 / 성적 / 상담 데이터 (Public 저장소에 절대 올리지 않음)
+/exam/
+/진학상담/
+/*.pdf
+/*.csv
+/*.xlsx
+/*.wav
+/*.html
+
+# 인증정보(apiKey) 및 인증 없는 읽기/쓰기 방법이 담긴 내부 문서
+/my-project/scripts/README.md
+
+# Netlify 배포 산출물
+/my-project/.netlify/
