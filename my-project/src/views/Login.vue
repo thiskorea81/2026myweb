@@ -1,20 +1,27 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { signInWithEmailAndPassword } from 'firebase/auth'
+import { auth, toLoginEmail } from '../firebase'
 
 const id = ref('')
 const pw = ref('')
+const isSubmitting = ref(false)
 const router = useRouter()
 
-const handleLogin = () => {
-  const validId = import.meta.env.VITE_LOGIN_ID
-  const validPw = import.meta.env.VITE_LOGIN_PW
-
-  if (id.value === validId && pw.value === validPw) {
+const handleLogin = async () => {
+  if (isSubmitting.value) return
+  isSubmitting.value = true
+  try {
+    // Firestore 보안 규칙이 request.auth를 확인하므로, 실제 Firebase 로그인이 성공해야만
+    // 이후 학생 데이터 읽기/쓰기가 통과됨.
+    await signInWithEmailAndPassword(auth, toLoginEmail(id.value), pw.value)
     localStorage.setItem('isLoggedIn', 'true')
     router.push('/')
-  } else {
+  } catch (err) {
     alert('아이디 또는 비밀번호가 일치하지 않습니다. 다시 확인해 주세요.')
+  } finally {
+    isSubmitting.value = false
   }
 }
 </script>

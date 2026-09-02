@@ -28,10 +28,11 @@ const router = createRouter({
       name: 'Apply', 
       component: () => import('../views/ApplyView.vue') 
     },
-    { 
-      path: '/admin', 
-      name: 'Admin', 
-      component: () => import('../views/AdminView.vue'), 
+    {
+      path: '/admin',
+      name: 'Admin',
+      component: () => import('../views/AdminView.vue'),
+      meta: { requiresAuth: true }
     },
     {
       path: '/board-admin',

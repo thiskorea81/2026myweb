@@ -1,6 +1,8 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { signOut } from 'firebase/auth'
+import { auth } from './firebase'
 import AiAssistant from './components/AiAssistant.vue' // 💡 AI 비서 컴포넌트 불러오기
 import { startAutoBoardTimer, stopAutoBoardTimer } from './services/autoBoardService' // 💡 프론트엔드 자동 조종례 스케줄러
 
@@ -26,6 +28,7 @@ watch(() => route.path, () => {
 
 const handleLogout = () => {
   if (confirm('로그아웃 하시겠습니까?')) {
+    signOut(auth)
     localStorage.removeItem('isLoggedIn')
     isLoggedIn.value = false
     stopAutoBoardTimer()
@@ -40,8 +43,9 @@ const TIMEOUT_MS = 30 * 60 * 1000 // 30분
 let inactivityTimer = null
 
 const handleAutoLogout = () => {
-  if (!isLoggedIn.value) return 
+  if (!isLoggedIn.value) return
 
+  signOut(auth)
   localStorage.removeItem('isLoggedIn')
   isLoggedIn.value = false
   stopAutoBoardTimer()
