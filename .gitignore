@@ -14,6 +14,7 @@
 
 # 인증정보(apiKey) 및 인증 없는 읽기/쓰기 방법이 담긴 내부 문서
 /my-project/scripts/README.md
+/my-project/docs/student-data.md
 
 # Netlify 배포 산출물
 /my-project/.netlify/
