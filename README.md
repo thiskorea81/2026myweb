@@ -22,13 +22,17 @@
 * `#업무` 태그를 사용하여 교사의 업무 일지 내용을 검색 및 요약.
 * AI와 나눈 유용한 대화는 즉시 해당 학생의 **[🤖 AI 노트]** 탭으로 영구 보존 가능.
 
+### 4. 🗓️ 창체 일정 (자율·진로)
+* 자율활동·진로활동 일정을 날짜/구분별로 등록하고 목록으로 확인.
+
 ---
 
 ## 🛠 사용 기술 (Tech Stack)
 * **Frontend:** Vue 3 (Composition API), Tailwind CSS
 * **State Management:** Pinia
-* **Backend / DB:** Firebase (Firestore)
+* **Backend / DB:** Firebase (Firestore), Firebase Authentication
 * **AI Integration:** Google Gemini API (`@google/genai`)
+* **Hosting:** Firebase Hosting (`firebase.json`)
 
 ---
 
@@ -37,15 +41,13 @@
 ### 1. 프로젝트 클론 및 패키지 설치
 ```bash
 git clone [프로젝트 레포지토리 주소]
-cd [프로젝트 폴더명]
+cd [프로젝트 폴더명]/my-project
 npm install
+```
 
 ### 2. 환경 변수 (`.env`) 설정 ⚠️ 매우 중요
 프로젝트 최상위 폴더에 `.env` 파일을 생성하고 아래 양식에 맞게 본인의 키 값을 입력합니다.
 **(주의: `.env` 파일은 절대 GitHub 등 공개된 저장소에 업로드하면 안 됩니다. `.gitignore`에 포함되어 있는지 확인하세요!)**
-
-> **🚨 로그인 정보 설정 주의사항:**
-> 보안을 위해 아래 예시의 아이디/비밀번호를 그대로 사용하지 마시고, **반드시 본인만이 알 수 있는 안전한 고유 아이디와 비밀번호로 변경**하여 사용하시기 바랍니다.
 
 ```env
 # .env (최상위 폴더에 생성)
@@ -62,17 +64,24 @@ VITE_FIREBASE_MEASUREMENT_ID="G-XXXXXXX"
 
 # 2. Google Gemini API 키
 VITE_GEMINI_API_KEY="AIzaSy..."
+```
 
-# 3. 관리자 로그인 정보 (본인의 아이디와 비밀번호로 반드시 수정하세요!)
-VITE_LOGIN_ID=my_secure_id
-VITE_LOGIN_PW=my_secure_password123!
+### 3. 로그인 계정 설정 (Firebase Authentication) ⚠️ 매우 중요
+로그인은 더 이상 `.env`의 아이디/비밀번호 값을 코드에서 직접 비교하지 않고, **Firebase Authentication의 실제 계정**으로 로그인합니다 (Firestore 보안 규칙이 `request.auth`를 확인하므로, 진짜로 로그인해야 학생 데이터 읽기/쓰기가 통과됩니다).
 
-### 3. 개발 서버 실행
+1. [Firebase 콘솔](https://console.firebase.google.com/) → 해당 프로젝트 → **Authentication** → **Sign-in method**에서 **이메일/비밀번호** 로그인 방식을 사용 설정합니다.
+2. **Authentication → Users**에서 새 사용자를 추가합니다. 이때 이메일은 `원하는아이디@2026myweb.local` 형식으로 입력합니다 (로컬 부분이 로그인 화면의 "아이디"가 됩니다 — 도메인은 `src/firebase.js`의 `LOGIN_EMAIL_DOMAIN` 값과 일치해야 합니다).
+3. 비밀번호는 본인만 아는 안전한 값으로 설정합니다.
 
-'''bash
+> **🚨 보안 주의사항:** 이 저장소는 공개(public) 저장소입니다. 로그인 아이디/비밀번호를 커밋 메시지, 이슈, README 등 어디에도 실제 값 그대로 남기지 마세요.
+
+### 4. 개발 서버 실행
+
+```bash
 npm run dev
+```
 
-브라우저에서 http://localhost:5173 으로 접속한 뒤, .env에 설정한 본인만의 아이디와 비밀번호로 로그인합니다.
+브라우저에서 http://localhost:5173 으로 접속한 뒤, 위에서 Firebase Authentication에 등록한 아이디(이메일의 `@` 앞부분)와 비밀번호로 로그인합니다.
 
 ## 📖 핵심 사용 설명서 (User Guide)
 
