@@ -14,6 +14,7 @@ const newAttDate = ref(new Date().toISOString().split('T')[0])
 const newAttType = ref('교외체험학습(국내)')
 const newAttDays = ref(1)
 const newAttReason = ref('')
+const newAttDocNumber = ref('')
 
 onMounted(() => {
   attendanceStore.fetchLogs(props.student.id)
@@ -52,11 +53,13 @@ const saveAttendanceLog = async () => {
     date: newAttDate.value,
     type: newAttType.value,
     days: newAttDays.value,
-    reason: newAttReason.value
+    reason: newAttReason.value,
+    docNumber: newAttDocNumber.value.trim() || null
   })
-  
+
   newAttReason.value = ''
   newAttDays.value = 1
+  newAttDocNumber.value = ''
 }
 
 const deleteAttendanceLog = async (logId) => {
@@ -113,6 +116,10 @@ const deleteAttendanceLog = async (logId) => {
           <label class="block text-xs text-gray-500 font-bold mb-1">사유 / 장소</label>
           <input type="text" v-model="newAttReason" placeholder="예: 가족여행 (제주도)" class="w-full border border-gray-300 p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
         </div>
+        <div v-if="newAttType.includes('교외체험학습')" class="min-w-[220px]">
+          <label class="block text-xs text-gray-500 font-bold mb-1">문서번호</label>
+          <input type="text" v-model="newAttDocNumber" placeholder="예: 상당고등학교-2322(2026. 3. 16.)" class="w-full border border-gray-300 p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
         <button @click="saveAttendanceLog" class="bg-gray-800 text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-gray-900 transition-colors h-[38px]">
           등록
         </button>
@@ -138,6 +145,7 @@ const deleteAttendanceLog = async (logId) => {
             <span v-if="log.days > 1" class="text-xs text-gray-500 font-bold">({{ log.days }}일)</span>
           </div>
           <p class="text-gray-600 text-xs">{{ log.reason || '사유 없음' }}</p>
+          <p v-if="log.docNumber" class="text-gray-400 text-xs font-mono mt-0.5">📎 {{ log.docNumber }}</p>
         </div>
         <button @click="deleteAttendanceLog(log.id)" class="text-red-500 hover:text-red-700 text-xs font-bold opacity-0 group-hover:opacity-100 bg-red-50 px-2 py-1 rounded">삭제</button>
       </div>

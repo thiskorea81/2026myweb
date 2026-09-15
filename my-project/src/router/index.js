@@ -88,6 +88,12 @@ const router = createRouter({
       path: '/my-grades',
       name: 'MyGrades',
       component: () => import('../views/MyGrades.vue')
+    },
+    // 교외체험학습 신청서/결과보고서 온라인 제출 (학생·보호자용, 인증 불필요)
+    {
+      path: '/cheheom',
+      name: 'Cheheom',
+      component: () => import('../views/CheheomView.vue')
     }
   ]
 })
