@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 
 // 💡 선생님께서 제공해주신 API 키 적용 (보안을 위해 추후 .env 파일로 이동을 권장합니다)
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const TTS_MODEL_NAME = "gemini-2.5-flash-preview-tts";
+const TTS_MODEL_NAME = "gemini-3.1-flash-tts-preview";
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 

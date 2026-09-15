@@ -2,8 +2,8 @@ import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 
 let aiClient = null;
-const MODEL_NAME = "gemini-3-flash-preview"; 
-const TTS_MODEL_NAME = "gemini-2.5-flash-preview-tts"; 
+const MODEL_NAME = "gemini-3.8-flash";
+const TTS_MODEL_NAME = "gemini-3.1-flash-tts-preview";
 
 const getAiClient = () => {
   if (!aiClient) {
