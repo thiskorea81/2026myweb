@@ -41,8 +41,8 @@ const handleDelete = async (id) => {
 <template>
   <div class="max-w-4xl mx-auto p-4 sm:p-8 font-sans text-gray-900">
     <div class="mb-8 border-b pb-6">
-      <h2 class="text-3xl font-black text-gray-900 tracking-tight">🗓️ 창체 일정 (자율·진로)</h2>
-      <p class="text-gray-500 font-bold mt-1">자율활동·진로활동 일정을 등록하고 확인합니다.</p>
+      <h2 class="text-3xl font-black text-gray-900 tracking-tight">🗓️ 창체 일정 (자율·진로·동아리)</h2>
+      <p class="text-gray-500 font-bold mt-1">자율활동·진로활동·동아리활동 일정을 등록하고 확인합니다.</p>
     </div>
 
     <div class="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 mb-8">
@@ -52,6 +52,7 @@ const handleDelete = async (id) => {
         <select v-model="form.type" class="border border-gray-200 rounded-xl px-3 py-2 font-bold text-sm">
           <option value="자율">자율</option>
           <option value="진로">진로</option>
+          <option value="동아리">동아리</option>
         </select>
         <input v-model="form.content" type="text" placeholder="활동 내용" class="flex-1 border border-gray-200 rounded-xl px-3 py-2 font-bold text-sm" />
         <button @click="handleAdd" :disabled="isSaving" class="px-5 py-2 bg-gray-800 text-white font-bold rounded-xl hover:bg-black transition-all disabled:opacity-50">
@@ -62,7 +63,7 @@ const handleDelete = async (id) => {
 
     <div class="flex gap-2 mb-4">
       <button
-        v-for="t in ['전체', '자율', '진로']" :key="t"
+        v-for="t in ['전체', '자율', '진로', '동아리']" :key="t"
         @click="filterType = t"
         class="px-4 py-1.5 rounded-full text-sm font-bold border transition-colors"
         :class="filterType === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'"
@@ -85,7 +86,11 @@ const handleDelete = async (id) => {
             <td class="p-4">
               <span
                 class="px-2 py-1 rounded-full text-xs font-bold"
-                :class="item.type === '진로' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'"
+                :class="{
+                  'bg-purple-50 text-purple-600': item.type === '진로',
+                  'bg-green-50 text-green-600': item.type === '동아리',
+                  'bg-blue-50 text-blue-600': item.type !== '진로' && item.type !== '동아리',
+                }"
               >{{ item.type }}</span>
             </td>
             <td class="p-4 text-sm text-gray-700">{{ item.content }}</td>
