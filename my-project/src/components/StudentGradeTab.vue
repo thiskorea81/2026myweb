@@ -13,6 +13,15 @@ const deleteGrade = async (gradeId, examName) => {
     await studentStore.deleteGrade(props.student.studentId, gradeId)
   }
 }
+
+// 💡 시험명 안의 키워드로 구분(수행평가/모의고사/정기고사)을 판단해 뱃지로 보여줌
+// - 시험명 표기가 자유 양식이라 별도 필드 없이 문자열 매칭으로 분류한다.
+const getExamBadge = (examName) => {
+  if (/수행/.test(examName)) return { label: '수행평가', class: 'bg-amber-100 text-amber-700' }
+  if (/모의고사|모고|학력평가/.test(examName)) return { label: '모의고사', class: 'bg-blue-100 text-blue-700' }
+  if (/중간|기말|정기고사|지필/.test(examName)) return { label: '정기고사', class: 'bg-indigo-100 text-indigo-700' }
+  return { label: '기타', class: 'bg-gray-100 text-gray-600' }
+}
 </script>
 
 <template>
@@ -29,7 +38,12 @@ const deleteGrade = async (gradeId, examName) => {
       <div v-for="grade in (student.grades || []).slice().reverse()" :key="grade.id" class="bg-gray-50 border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow transition-shadow">
         
         <div class="flex justify-between items-center mb-4">
-          <span class="font-black text-gray-800 text-lg border-l-4 border-indigo-500 pl-2">{{ grade.examName }}</span>
+          <span class="flex items-center gap-2">
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full" :class="getExamBadge(grade.examName).class">
+              {{ getExamBadge(grade.examName).label }}
+            </span>
+            <span class="font-black text-gray-800 text-lg border-l-4 border-indigo-500 pl-2">{{ grade.examName }}</span>
+          </span>
           <button @click="deleteGrade(grade.id, grade.examName)" class="text-xs bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-700 px-3 py-1.5 rounded font-bold transition-colors">
             기록 삭제
           </button>

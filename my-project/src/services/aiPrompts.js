@@ -199,6 +199,46 @@ export const getBulkGradeAiNotePrompt = (studentsData) => {
 };
 
 /**
+ * 📊 학생별 전체 성적 이력(모의고사 여러 회차 + 내신)을 바탕으로
+ * 추이(향상/하락) 중심의 상담자료를 생성하는 프롬프트 (배치 처리용)
+ * @param {Array<{studentId: string, name: string, examHistory: Array<{examName: string, scores: object}>}>} studentsData
+ */
+export const getGradeTrendAiNotePrompt = (studentsData) => {
+  const studentBlocks = studentsData.map(s => {
+    const examLines = s.examHistory.map(e => {
+      const scoreStr = Object.entries(e.scores).map(([k, v]) => `${k}: ${v}`).join(", ");
+      return `    · ${e.examName} → ${scoreStr}`;
+    }).join('\n');
+    return `- studentId: ${s.studentId} | 이름: ${s.name}\n${examLines}`;
+  }).join('\n\n');
+
+  return `
+    당신은 훌륭한 담임 교사 비서입니다. 아래는 학생별로 시간순으로 나열된 여러 차례의 성적 기록입니다
+    (모의고사 여러 회차 + 학교 내신 시험 포함, 과목명 뒤 "(등급)"이 붙은 값은 전국연합학력평가의 9등급제 등급입니다).
+
+    각 학생마다, 특히 가장 최근 모의고사(9월모의고사)를 중심으로 다음을 반영한 상담자료를 4~6문장으로 작성하세요.
+    - 이전 모의고사(3월→6월→9월) 대비 과목별 등급/점수 추이 (향상/하락/유지)를 구체적으로 언급
+    - 모의고사 성적과 내신(학교 시험) 성적 사이에 눈에 띄는 차이가 있다면 함께 언급
+    - 가장 강한 과목과 보완이 필요한 과목을 지목
+    - 다음 시험을 위한 구체적이고 실행 가능한 학습 지도 조언 1~2가지
+
+    [성적 분석 특별 규칙]
+    - 과목명 뒤에 "(등급)"이 붙지 않은 순수 숫자는 원점수/백분율이며, 값이 높을수록 우수한 성적입니다.
+    - "(등급)"이 붙은 값이나 별도로 백분율(%) 표기가 있는 경우, 수치가 낮을수록(등급 1에 가까울수록) 우수한 성적입니다.
+    - 백분율 수치만 있고 등급이 없다면 반드시 다음 5등급제로 변환하여 분석에 반영하세요.
+      * 1등급: 10% 이하  * 2등급: 10% 초과~34% 이하  * 3등급: 34% 초과~66% 이하
+      * 4등급: 66% 초과~90% 이하  * 5등급: 90% 초과~100% 이하
+
+    [출력 형식 - 절대 엄수]
+    - 아래 [학생 목록]과 정확히 같은 수의 원소를 가진 JSON 배열로만 응답하세요.
+    - 각 원소는 { "studentId": "...", "note": "..." } 형태이며, studentId는 입력값을 그대로 사용하세요.
+
+    [학생 목록]
+    ${studentBlocks}
+  `;
+};
+
+/**
  * 📚 모의고사 세부영역/오답문항까지 반영한 학생 개인별 학습 조언(강점/약점) 생성 프롬프트
  * @param {Object} student - 학생 객체
  * @param {string} gradesSummaryText - 내신 성적(학기중 시험) 요약 텍스트

@@ -70,9 +70,10 @@ const handleGradeUpload = async () => {
     <h3 class="text-lg font-bold mb-2 text-indigo-900">💯 성적 일괄 등록 (자유 양식)</h3>
     <p class="text-sm text-indigo-700 mb-4 leading-relaxed">
       첫 줄에 반드시 <span class="font-bold text-red-600">'학번'</span>과 <span class="font-bold text-red-600">'시험명'</span>을 포함해주세요.<br>
-      나머지 열 제목(석차, 국어, 수학 등)은 자유롭게 적으시면 그대로 성적표에 등록됩니다. (CSV 또는 엑셀 복사/붙여넣기 지원)
+      나머지 열 제목(석차, 국어, 수학 등)은 자유롭게 적으시면 그대로 성적표에 등록됩니다. (CSV 또는 엑셀 복사/붙여넣기 지원)<br>
+      지필고사·모의고사뿐 아니라 <span class="font-bold text-amber-600">수행평가</span>도 시험명에 "수행평가"라는 단어를 포함해서 등록하면(예: "1학기 국어 수행평가1") 성적 확인 화면에 수행평가로 자동 구분되어 표시됩니다.
     </p>
-    
+
     <div class="bg-white p-3 rounded border border-indigo-100 mb-4 text-xs font-mono text-gray-600">
       <p class="font-bold mb-1">📝 입력 예시:</p>
       학번, 시험명, 석차<br>
@@ -80,7 +81,10 @@ const handleGradeUpload = async () => {
       10502, 신입생 첫성적, 3<br>
       <br>
       학번, 시험명, 국어, 수학, 영어<br>
-      10501, 진단평가, 90, 85, 100
+      10501, 진단평가, 90, 85, 100<br>
+      <br>
+      학번, 시험명, 점수<br>
+      10501, 1학기 국어 수행평가1, 18
     </div>
 
     <textarea 
