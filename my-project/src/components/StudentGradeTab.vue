@@ -14,11 +14,13 @@ const deleteGrade = async (gradeId, examName) => {
   }
 }
 
-// 💡 시험명 안의 키워드로 구분(수행평가/모의고사/정기고사)을 판단해 뱃지로 보여줌
+// 💡 시험명 안의 키워드로 구분(수행평가/모의고사/학기말/정기고사)을 판단해 뱃지로 보여줌
 // - 시험명 표기가 자유 양식이라 별도 필드 없이 문자열 매칭으로 분류한다.
+// - "학기말"(중간+기말+수행 반영)은 "기말"을 포함하므로 정기고사보다 먼저 판정해야 한다.
 const getExamBadge = (examName) => {
   if (/수행/.test(examName)) return { label: '수행평가', class: 'bg-amber-100 text-amber-700' }
   if (/모의고사|모고|학력평가/.test(examName)) return { label: '모의고사', class: 'bg-blue-100 text-blue-700' }
+  if (/학기말/.test(examName)) return { label: '학기말', class: 'bg-emerald-100 text-emerald-700' }
   if (/중간|기말|정기고사|지필/.test(examName)) return { label: '정기고사', class: 'bg-indigo-100 text-indigo-700' }
   return { label: '기타', class: 'bg-gray-100 text-gray-600' }
 }
