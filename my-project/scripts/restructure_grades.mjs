@@ -4,9 +4,8 @@
 //  [1학년 5반, 원본 자료가 있는 범위]
 //   · 모의고사 3월/6월/9월 → 과목 순서 국어·수학·영어·한국사·사회탐구·과학탐구,
 //     점수 표기 "원점수(전국백분위, 등급)" (영어·한국사는 절대평가라 "원점수(등급)", 미응시 과목은 제외)
-//   · "1학기중간고사" → "원점수(석차백분율)" + 전과목등수
-//     (일람표에는 백분율이 없어, 기존 "1학기중간고사(등급)" 기록의 백분율/등수를 합쳐 한 기록으로 만든다)
-//   · "1학기기말고사" → 원점수만 (기말 석차·백분율 자료가 아직 없음)
+//   · "1학기중간고사"/"1학기기말고사" → "원점수(석차백분율)" + 합계/평균
+//     (석차백분율 = 과목별 석차 ÷ 수강자수. 전과목 등수는 일람표에 없어 기존 기록에 있던 값만 유지)
 //   · "1학기학기말" (중간+기말+수행 반영) → "원점수(백분위, 등급)"
 //   · "1학기수행평가" → 과목별 "받은점수합/만점합"
 //   · 위 기록으로 내용이 통합된 옛 기록은 삭제
@@ -28,8 +27,12 @@ const MOCK_EXAMS = [
   { examName: "6월모의고사", txt: `${DATA_DIR}\\모의고사\\6월.txt` },
   { examName: "9월모의고사", txt: `${DATA_DIR}\\모의고사\\9월.txt` },
 ];
+// 학급별 일람표: 과목별 받은점수 + 전과목 합계/평균
 const MIDTERM_XLSX = `${DATA_DIR}\\학교\\2026_1학기_중간고사(1-5).xlsx`;
 const FINAL_XLSX = `${DATA_DIR}\\학교\\2026_1학기_기말고사(1-5).xlsx`;
+// 전과목 성적 일람표: 과목별 원점수 + 석차(동석차수) + 수강자수 (석차백분율 계산용)
+const MIDTERM_FULL_XLSX = `${DATA_DIR}\\학교\\2026학년도 제1학기 중간고사 전과목 성적 일람표(1-5).xlsx`;
+const FINAL_FULL_XLSX = `${DATA_DIR}\\학교\\2026학년도 제1학기 기말고사 전과목 성적 일람표(1-5).xlsx`;
 const REPORT_XLSX = `${DATA_DIR}\\학교\\2026_1학기_성적통지표(1-5).xlsx`;
 
 const MIDTERM_EXAM = "1학기중간고사";
@@ -193,6 +196,74 @@ function parseExamRoster(xlsxPath) {
   return results;
 }
 
+/**
+ * "전과목 성적 일람표" 엑셀 → [{ studentId, name, scores }] ("원점수(석차백분율)" 형태)
+ *
+ * 과목이 가로로 늘어선 표이고, 한 과목이 [시험 득점, 합계, 원점수, 석차(동석차수), 수강자수]
+ * 열을 차지한다. 지면 폭을 넘기면 "평가방법(반영비율)" 머리글로 시작하는 블록이 새로 열리고
+ * (남은 과목 / 남은 학생이 이어짐), 같은 과목이 두 블록에 쪼개져 나오기도 한다.
+ */
+function parseFullScoreRoster(xlsxPath) {
+  const wb = XLSX.readFile(xlsxPath);
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
+
+  const classMatch = rows.map((r) => String(r[0])).join("\n").match(/(\d+)학년\s+(\d+)반/);
+  if (!classMatch) throw new Error(`${xlsxPath}: 학년/반 정보를 찾지 못했습니다`);
+  const [, grade, cls] = classMatch;
+
+  const byNumber = new Map(); // 번호 → { name, scores }
+
+  for (let i = 0; i < rows.length; i++) {
+    if (!String(rows[i][0]).includes("평가방법")) continue;
+
+    const subjectRow = rows[i];
+    let h = i + 1;
+    while (h < rows.length && !String(rows[h][0]).includes("명칭,영역")) h++;
+    if (h >= rows.length) break;
+    const labelRow = rows[h].map((c) => String(c).trim());
+
+    // 과목명이 적힌 열들을 찾아, 다음 과목이 시작되기 전까지를 그 과목의 열 범위로 본다
+    const starts = subjectRow
+      .map((c, idx) => ({ idx, name: String(c).trim() }))
+      .filter((c) => c.idx >= 2 && c.name);
+    const spans = starts.map((s, k) => ({
+      subject: subjectLabel(s.name),
+      from: s.idx,
+      to: k + 1 < starts.length ? starts[k + 1].idx - 1 : labelRow.length - 1,
+    }));
+
+    for (let r = h + 1; r < rows.length && typeof rows[r][0] === "number"; r++) {
+      const row = rows[r];
+      const number = row[0];
+      const name = String(row[1]).trim();
+      const entry = byNumber.get(number) ?? { name, scores: {} };
+      byNumber.set(number, entry);
+
+      for (const span of spans) {
+        const colOf = (label) => {
+          for (let c = span.from; c <= span.to; c++) if (labelRow[c] === label) return c;
+          return -1;
+        };
+        const [scoreCol, rankCol, takersCol] = [colOf("원점수"), colOf("석차(동석차수)"), colOf("수강자수")];
+        if (scoreCol < 0 || row[scoreCol] === "") continue;
+
+        // 석차는 동석차수가 괄호로 붙어 올 수 있다 ("237(8)" = 237등, 동석차 8명)
+        const rankNum = Number(String(row[rankCol] ?? "").replace(/\(.*\)$/, "").trim());
+        const takers = Number(row[takersCol]);
+        const percentile = rankNum && takers ? ((rankNum / takers) * 100).toFixed(2) : null;
+        entry.scores[span.subject] = percentile ? `${row[scoreCol]}(${percentile})` : `${row[scoreCol]}`;
+      }
+      i = r;
+    }
+  }
+
+  return [...byNumber].map(([number, entry]) => ({
+    studentId: `${grade}${String(cls).padStart(2, "0")}${String(number).padStart(2, "0")}`,
+    name: entry.name,
+    scores: entry.scores,
+  }));
+}
+
 /** 성적 통지표 엑셀 → [{ studentId, name, semesterScores, performanceScores }] */
 function parseReportCard(xlsxPath) {
   const wb = XLSX.readFile(xlsxPath);
@@ -301,32 +372,34 @@ function parseReportCard(xlsxPath) {
  * "원점수(백분율)" 형태로 만든다. (중간고사 일람표에는 석차·백분율 정보가 없어서,
  *  이미 DB에 들어와 있던 백분율 기록을 끌어와 한 기록으로 합치는 것)
  */
-function mergeMidtermPercentiles(rawScores, legacyScores, currentScores) {
-  const percentiles = {};
-  const summary = {};
-
-  // 옛 기록 형태: { "국어(백분율)": "80.70175439", "전과목등수(285명)": "267" }
-  for (const [key, value] of Object.entries(legacyScores || {})) {
-    if (/\(백분[율위]\)\s*$/.test(key)) percentiles[stripParen(key)] = value;
-    else summary[key] = value;
+/**
+ * 정기고사 한 회차의 기록을 만든다.
+ *  · 과목별 점수: 전과목 성적 일람표의 "원점수(석차백분율)" (없으면 학급별 일람표의 받은점수)
+ *  · 합계/평균: 학급별 일람표
+ *  · 전과목 등수: 기존 기록에 들어있던 값만 유지 (일람표에는 전과목 등수가 없다)
+ */
+function buildExamRecord({ fullScores, rosterScores, previousScores }) {
+  const totals = {};
+  for (const [key, value] of Object.entries(rosterScores || {})) {
+    if (/^(합계|평균)$/.test(key)) totals[key] = String(value);
   }
 
-  // 이미 한 번 합쳐 둔 기록 형태: { "국어": "36.3(80.70)", "전과목등수(285명)": "267" }
-  // (옛 기록은 합친 뒤 삭제되므로, 스크립트를 다시 돌려도 백분율이 사라지지 않게 여기서 되읽는다)
-  for (const [key, value] of Object.entries(currentScores || {})) {
-    const matched = String(value).match(/^[\d.]+\((\d+\.?\d*)\)$/);
-    if (matched) percentiles[key] ??= matched[1];
-    else if (/등수|석차/.test(key)) summary[key] ??= value;
+  const overallRank = {};
+  for (const [key, value] of Object.entries(previousScores || {})) {
+    if (/등수|석차/.test(key)) overallRank[key] = value;
   }
 
-  const scores = {};
-  for (const [subject, raw] of Object.entries(rawScores)) {
-    const pct = percentiles[subject];
-    scores[subject] = pct !== undefined && Number.isFinite(Number(pct))
-      ? `${raw}(${Number(pct).toFixed(2)})`
-      : String(raw);
+  // 전과목 일람표에 없는 학생(석차 산정 제외 등)은 학급별 일람표의 과목 점수를 그대로 쓴다
+  const subjects = {};
+  if (fullScores && Object.keys(fullScores).length > 0) {
+    Object.assign(subjects, fullScores);
+  } else {
+    for (const [key, value] of Object.entries(rosterScores || {})) {
+      if (!/^(합계|평균)$/.test(key)) subjects[key] = String(value);
+    }
   }
-  return { ...scores, ...summary };
+
+  return { ...subjects, ...totals, ...overallRank };
 }
 
 /** 모의고사는 과목 키만 새로 쓰고, 총점/등수 같은 요약 항목은 기존 값을 유지한다 */
@@ -423,24 +496,28 @@ async function main() {
     }
   }
 
-  const midterms = parseExamRoster(MIDTERM_XLSX);
-  console.log(`${MIDTERM_EXAM}: ${midterms.length}명 파싱`);
-  for (const p of midterms) {
-    const grades = byId.get(p.studentId)?.grades || [];
-    const legacy = grades.find((g) => g.examName === MIDTERM_LEGACY_EXAM);
-    const current = grades.find((g) => g.examName === MIDTERM_EXAM);
-    const merged = mergeMidtermPercentiles(p.scores, legacy?.scores, current?.scores);
-    if (!Object.values(merged).some((v) => /\(/.test(String(v)))) {
-      warnings.push(`${p.studentId} ${p.name}: 중간고사 백분율 자료가 없어 원점수만 기록`);
-    }
-    addScores(p.studentId, p.name, MIDTERM_EXAM, merged);
-  }
+  for (const [examName, rosterXlsx, fullXlsx, legacyExam] of [
+    [MIDTERM_EXAM, MIDTERM_XLSX, MIDTERM_FULL_XLSX, MIDTERM_LEGACY_EXAM],
+    [FINAL_EXAM, FINAL_XLSX, FINAL_FULL_XLSX, null],
+  ]) {
+    const roster = new Map(parseExamRoster(rosterXlsx).map((p) => [p.studentId, p]));
+    const full = new Map(parseFullScoreRoster(fullXlsx).map((p) => [p.studentId, p]));
+    console.log(`${examName}: 학급별 일람표 ${roster.size}명 / 전과목 일람표 ${full.size}명`);
 
-  // 기말고사 일람표에는 석차·백분율이 없어 원점수만 기록된다 (자료가 생기면 중간고사처럼 합칠 수 있음)
-  const finals = parseExamRoster(FINAL_XLSX);
-  console.log(`${FINAL_EXAM}: ${finals.length}명 파싱 (석차·백분율 자료 없음 → 원점수만)`);
-  for (const p of finals) {
-    addScores(p.studentId, p.name, FINAL_EXAM, p.scores);
+    for (const [studentId, p] of roster) {
+      const grades = byId.get(studentId)?.grades || [];
+      const previous = grades.find((g) => g.examName === (legacyExam ?? examName))
+        ?? grades.find((g) => g.examName === examName);
+      const scores = buildExamRecord({
+        fullScores: full.get(studentId)?.scores,
+        rosterScores: p.scores,
+        previousScores: previous?.scores,
+      });
+      if (!full.has(studentId)) {
+        warnings.push(`${studentId} ${p.name}: 전과목 일람표에 없어 ${examName} 백분율 없이 기록`);
+      }
+      addScores(studentId, p.name, examName, scores);
+    }
   }
 
   const reportCards = parseReportCard(REPORT_XLSX);
