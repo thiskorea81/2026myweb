@@ -70,6 +70,13 @@ const router = createRouter({
       component: () => import('../views/Schedule.vue'),
       meta: { requiresAuth: true }
     },
+    // 정기고사 학급 안내 (교실 TV로 보여주고 음성으로 들려주기)
+    {
+      path: '/exam-guide',
+      name: 'ExamGuide',
+      component: () => import('../views/ExamGuide.vue'),
+      meta: { requiresAuth: true }
+    },
     // 💡 새로 추가된 TTS 방송국 라우트
     {
       path: '/tts',

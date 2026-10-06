@@ -30,6 +30,18 @@ export const gradeAiNoteItemSchema = z.object({
   note: z.string().describe("그 학생에 대한 성적 분석 코멘트 (3문장 내외)")
 });
 
+// 💡 정기고사 학급 안내 슬라이드 구조 (첫 슬라이드는 표지로 쓴다)
+export const examGuideSchema = z.object({
+  slides: z.array(z.object({
+    icon: z.string().describe("슬라이드 주제를 나타내는 이모지 1개"),
+    title: z.string().describe("슬라이드 제목 (15자 이내)"),
+    subtitle: z.string().describe("부제 (없으면 빈 문자열)"),
+    points: z.array(z.string()).describe("학생이 꼭 알아야 할 핵심 내용, 한 항목에 한 문장 (표지는 빈 배열 가능)"),
+    warning: z.string().describe("가장 강하게 경고할 한 문장 (없으면 빈 문자열)"),
+    narration: z.string().describe("교사가 학생들에게 말하듯 읽어 줄 낭독 원고")
+  }))
+});
+
 
 /**
  * ==========================================
@@ -292,5 +304,29 @@ export const getGeneralAiNotePrompt = (student, allRecordsText) => {
     
     [종합 기록 내용]
     ${allRecordsText}
+  `;
+};
+/**
+ * 📝 정기고사 학급 안내문(교사용 원문) → 학생에게 보여주고 들려줄 슬라이드
+ * @param {string} title - 안내 자료 제목 (예: 2026학년도 2학기 중간고사 안내)
+ * @param {string} sourceText - 연구부 안내문 원문
+ */
+export const getExamGuidePrompt = (title, sourceText) => {
+  return `
+    당신은 고등학교 담임 교사입니다. 아래 [안내문 원문]은 연구부가 담임 교사에게 보낸 정기고사 학급 안내사항입니다.
+    이 내용을 교실 TV에 띄워 학생들에게 보여주고 음성으로 들려줄 슬라이드로 다시 구성해 주세요.
+
+    [구성 규칙]
+    1. 첫 슬라이드는 표지입니다. title은 "${title}", points는 이번 안내 순서(3~6개 짧은 키워드)로 작성하세요.
+    2. 학생이 알아야 할 내용만 남기세요. 출결 기록 송부, 응시현황표 부착, 결시생 칠판 기재 방법 등 교사만 하는 업무는 빼세요.
+    3. 주제별로 슬라이드를 나누세요 (예: 시험 당일 이동, 답안지 작성, 반입 금지 물품, 시험 직전·시험 중 행동, 모자, 부정행위 유형, 결시 안내).
+       한 슬라이드의 points는 3~7개, 학생 눈높이의 짧은 문장으로 쓰고, 꼭 기억할 낱말은 **이렇게** 감싸 강조하세요.
+    4. 원문에 없는 규정이나 숫자를 지어내지 마세요. 시각·인원·비율 등 숫자는 원문 그대로 옮기세요.
+    5. 마지막 슬라이드는 응원과 당부로 마무리하세요.
+    6. narration은 선생님이 학생들 앞에서 말하듯 자연스러운 존댓말 구어체로, 슬라이드 내용을 빠짐없이 풀어서 설명하세요.
+       기호(★, →, ·, **)는 쓰지 말고, 소리 내어 읽기 좋은 문장으로만 작성하세요.
+
+    [안내문 원문]
+    ${sourceText}
   `;
 };
