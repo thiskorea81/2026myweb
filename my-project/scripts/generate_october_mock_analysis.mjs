@@ -1,15 +1,16 @@
 // 10월모의고사 성적이 등록된 1학년 5반 학생들을 대상으로, 3월→6월→9월→10월 모의고사 추이(특히 9월 대비 변화)와
 // 10월 개인채점표 오답 문항 분석, 2학기 중간고사 내신을 함께 반영한 상담자료를 Gemini로 생성해 aiNotes에 저장한다.
 //
-//  · 10월은 공식 성적통지표 전이라 EBSi 기준 예상 등급만 있다 (전국 백분위 없음).
+//  · 10월 성적은 KICE 성적일람표의 공식 전국백분위·등급 기준이다 (apply_mock_exam_official_grades.mjs로 반영).
 //  · 오답 문항은 학급 정답률을 함께 계산해 "학급 대부분이 맞힌 문항을 틀린 경우"를 짚게 한다.
 //
 // 기본은 미리보기(dry-run)로, 생성된 노트를 콘솔에 출력하고 --out=<파일>에 JSON으로 저장한다.
 // 저장은 --commit. --from=<파일> 을 주면 새로 생성하지 않고 그 JSON의 노트를 그대로 저장한다.
+// --replace 를 함께 주면 저장 전에 같은 시험의 기존 자동 분석 노트(제목 기준)를 대상 학생들에게서 삭제한다.
 //   node --env-file=.env scripts/generate_october_mock_analysis.mjs --out=notes.json
-//   node --env-file=.env scripts/generate_october_mock_analysis.mjs --from=notes.json --commit
+//   node --env-file=.env scripts/generate_october_mock_analysis.mjs --from=notes.json --commit [--replace]
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs, addDoc } from "firebase/firestore";
+import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "firebase/firestore";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
@@ -23,7 +24,11 @@ const CONTEXT_EXAMS = ["2학기중간고사"];
 // 학급 정답률이 이 이상인 문항을 틀렸으면 "놓친 쉬운 문항"으로 본다
 const EASY_RATE = 0.7;
 
+// 이 스크립트가 저장하는 노트의 제목. --replace 시 이 제목으로 시작하는 기존 노트를 지운다
+const NOTE_TITLE = `📊 [성적 기반 자동 분석] - ${EXAM_NAME}`;
+
 const COMMIT = process.argv.includes("--commit");
+const REPLACE = process.argv.includes("--replace");
 const OUT_ARG = process.argv.find((a) => a.startsWith("--out="))?.split("=")[1];
 const FROM_ARG = process.argv.find((a) => a.startsWith("--from="))?.split("=")[1];
 
@@ -117,10 +122,8 @@ const getOctoberAiNotePrompt = (studentsData) => {
 
     [성적 분석 특별 규칙]
     - 모의고사 등급은 9등급제(1등급이 최상위)입니다. 회차마다 난이도가 달라 원점수보다 등급 변화로 비교하세요.
-    - 3월·6월·9월 모의고사 "원점수(숫자, N등급)"의 괄호 안 숫자는 전국 백분위로, 높을수록 우수합니다.
-      영어·한국사는 절대평가라 "원점수(N등급)"만 있습니다.
-    - ${EXAM_NAME}의 "원점수(예상 N등급)"은 공식 성적 발표 전 EBSi 기준 예상 등급입니다.
-      "예상 등급"임을 감안해 단정적인 표현은 피하세요.
+    - 모의고사 "원점수(숫자, N등급)"의 괄호 안 숫자는 전국 백분위로, 높을수록 우수합니다.
+      영어·한국사는 절대평가라 "원점수(N등급)"만 있습니다. 모든 회차가 공식 성적입니다.
     - 2학기중간고사(내신) "원점수(숫자, 예상 N등급)"의 괄호 안 숫자는 석차백분율로, 낮을수록 우수하며 등급은 5등급제입니다.
       "인정결"은 출석인정 결시이므로 성적 부진으로 해석하지 마세요.
     - 기록에 없는 회차(미응시 등)는 언급하지 말고, 자료에 없는 사실(시험 중 긴장, 집중력 저하, 컨디션 등)을 단정하지 마세요.
@@ -213,11 +216,19 @@ async function main() {
     return;
   }
 
+  if (REPLACE) {
+    const ids = new Set(notes.map((r) => String(r.studentId)));
+    const old = (await getDocs(collection(db, "aiNotes"))).docs
+      .filter((d) => ids.has(String(d.data().studentId)) && String(d.data().content ?? "").startsWith(NOTE_TITLE));
+    for (const d of old) await deleteDoc(doc(db, "aiNotes", d.id));
+    console.log(`기존 ${EXAM_NAME} 자동 분석 노트 ${old.length}건을 삭제했습니다.`);
+  }
+
   const now = new Date().toISOString();
   for (const r of notes) {
     await addDoc(collection(db, "aiNotes"), {
       studentId: String(r.studentId),
-      content: `📊 [성적 기반 자동 분석] - ${EXAM_NAME} (9월 대비 추이 + 문항 분석)\n${r.note}`,
+      content: `${NOTE_TITLE} (9월 대비 추이 + 문항 분석)\n${r.note}`,
       createdAt: now,
     });
   }
