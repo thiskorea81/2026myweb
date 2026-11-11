@@ -213,7 +213,7 @@ onUnmounted(() => window.removeEventListener('afterprint', onAfterPrint))
     <!-- 인쇄 전용: 인쇄 옵션에 따라 학생마다 정기고사 쪽 / 모의고사 쪽 (각 A4 한 쪽) -->
     <div class="hidden print:block">
       <div v-for="p in printPages" :key="p.key" class="print-page">
-        <GradeReportSheet :student="p.student" :exam-name="p.examName" />
+        <GradeReportSheet :student="p.student" :exam-name="p.examName" compact />
       </div>
     </div>
   </div>
@@ -222,7 +222,7 @@ onUnmounted(() => window.removeEventListener('afterprint', onAfterPrint))
 <style scoped>
 @media print {
   @page { size: A4; margin: 12mm; }
-  .print-page { break-after: page; page-break-after: always; }
+  .print-page { break-after: page; page-break-after: always; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .print-page:last-child { break-after: auto; page-break-after: auto; }
 }
 </style>
