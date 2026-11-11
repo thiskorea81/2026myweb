@@ -4,7 +4,7 @@
 // 각 파일은 job 하나가 되고, job.rows(미리보기) / job.warnings / job.patches(Map: 학생 문서 ID → 바꿀 필드)를 갖는다.
 import {
   detectSheetType, parseRoster, parsePhotoFileName, parseExamSheet, parseSemesterSheet, semesterRecords,
-  parseKiceReport, mergeScores,
+  parseKiceReport, mergeScores, parseReportCardSheet, reportCardScores,
 } from './schoolDocParsers.js'
 
 const nowIso = () => new Date().toISOString()
@@ -44,7 +44,7 @@ export function createImportSession(students) {
     }
     const extraChanged = extra && Object.entries(extra).some(([k, v]) => stable(old?.[k]) !== stable(v))
     if (old && changes.length === 0 && !extraChanged) { job.rows.push({ id, name, status: '같음', changes }); return }
-    if (old && changes.length === 0) changes.push('학급·학과 평균 추가')
+    if (old && changes.length === 0) changes.push(`세부 자료 추가 (${Object.keys(extra).join(', ')})`)
     const record = { ...(old || { id: Date.now() + Math.random(), examName, createdAt: nowIso() }), scores: merged, ...(ia ? { itemAnalysis: ia } : {}), ...(extra || {}), ...(old ? { updatedAt: nowIso() } : {}) }
     if (idx > -1) w.grades[idx] = record
     else w.grades.push(record)
@@ -52,7 +52,7 @@ export function createImportSession(students) {
     job.rows.push({ id, name, status: old ? '변경' : '신규', changes })
   }
 
-  /** xlsx 시트 행들 (명렬표 / 정기시험 일람표 / 학기말 개인별 일람표) */
+  /** xlsx 시트 행들 (명렬표 / 정기시험 일람표 / 학기말 개인별 일람표 / 성적통지표) */
   function addSheet(fileName, rows, { updateAddress = true } = {}) {
     const job = newJob(detectSheetType(rows), fileName)
     try {
@@ -90,8 +90,34 @@ export function createImportSession(students) {
           if (Object.keys(final).length) applyRecord(job, s.studentId, s.name, `${r.semester}학기학기말`, final)
           if (Object.keys(perf).length) applyRecord(job, s.studentId, s.name, `${r.semester}학기수행평가`, perf)
         })
+      } else if (job.kind === 'reportCard') {
+        const r = parseReportCardSheet(rows)
+        job.title = `성적통지표 · ${r.examName} (${r.students.length}명)`
+        r.students.forEach((s) => {
+          const scores = reportCardScores(s, r.exam)
+          if (Object.keys(scores).length) {
+            // 과목별 석차·수강자수·과목평균도 기록에 남겨 둔다 (석차백분율 근거)
+            const subjectStats = Object.fromEntries(Object.entries(s.subjects).filter(([, v]) => v.rank).map(([k, v]) => [k, { 석차: v.rank, 동석차수: v.ties, 수강자수: v.takers, 과목평균: v.avg }]))
+            applyRecord(job, s.studentId, s.name, r.examName, scores, { extra: Object.keys(subjectStats).length ? { subjectStats } : undefined })
+          }
+          // 통지표 출력일 기준 나이스 출결 누계
+          const st = findStudent(s.studentId)
+          if (s.attendance && st && st.name === s.name) {
+            const neisAttendance = { ...s.attendance, asOf: r.asOf, source: `${r.examName} 성적통지표` }
+            const { asOf: _a, source: _s, ...oldCore } = st.neisAttendance || {}
+            const { asOf: _b, source: _t, ...newCore } = neisAttendance
+            const changed = stable(oldCore) !== stable(newCore)
+            if (changed || !st.neisAttendance) {
+              job.patches.set(st.id, { ...(job.patches.get(st.id) || {}), neisAttendance })
+              const row = job.rows.find((x) => x.id === s.studentId)
+              const note = `출결 누계 ${st.neisAttendance ? '갱신' : '추가'} (수업일수 ${s.attendance.수업일수})`
+              if (row) { row.changes.push(note); if (row.status === '같음') row.status = '변경' }
+              else job.rows.push({ id: s.studentId, name: s.name, status: '변경', changes: [note] })
+            }
+          }
+        })
       } else {
-        throw new Error('명렬표 / 정기시험 학급별 일람표 / 학기말 개인별 일람표가 아닙니다')
+        throw new Error('명렬표 / 정기시험 일람표 / 학기말 개인별 일람표 / 성적통지표가 아닙니다')
       }
     } catch (e) {
       job.error = e.message

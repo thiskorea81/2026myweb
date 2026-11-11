@@ -86,7 +86,7 @@ Exam score data is pasted in from Excel/Google Forms in inconsistent column-nami
 
 ### Importing NEIS / KICE source files
 
-Homeroom's "📥 자료 올리기" (`SchoolDocUpload.vue`) takes the files teachers actually download, unchanged: NEIS 명렬표 xlsx, 사진 named `성명(번호).jpg`, 정기시험 학급별 일람표 xlsx, 학기말 개인별 일람표 xlsx, and the KICE 성적통지표 PDF (read with `pdfjs-dist` by glyph x/y position). Parsing lives in `src/utils/schoolDocParsers.js` and the preview/merge session in `src/utils/schoolDocImport.js` — both pure, so they can be exercised from a Node script against real files. `mergeScores` keeps richer existing values (e.g. 석차백분율 added from another source) when the 원점수 matches, and re-uploading the same file is a no-op. Never persist 주민등록번호 from the 명렬표.
+Homeroom's "📥 자료 올리기" (`SchoolDocUpload.vue`) takes the files teachers actually download, unchanged: NEIS 명렬표 xlsx, 사진 named `성명(번호).jpg`, 정기시험 학급별 일람표 xlsx, 학기말 개인별 일람표 xlsx, the NEIS 성적통지표 xlsx (석차·수강자수 → 석차백분율, 5-grade 예상 등급 at 10/34/66/90%, plus `neisAttendance` totals), and the KICE 성적통지표 PDF (read with `pdfjs-dist` by glyph x/y position). Parsing lives in `src/utils/schoolDocParsers.js` and the preview/merge session in `src/utils/schoolDocImport.js` — both pure, so they can be exercised from a Node script against real files. `mergeScores` keeps richer existing values (e.g. 석차백분율 added from another source) when the 원점수 matches, and re-uploading the same file is a no-op. Never persist 주민등록번호 from the 명렬표.
 
 ### 조종례 boards (workLogs → boardSummaries / teacherBoardSummaries)
 

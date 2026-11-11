@@ -10,6 +10,8 @@ const props = defineProps({
 const attendanceStore = useAttendanceStore()
 const { logs: attendanceLogs } = storeToRefs(attendanceStore)
 
+const NEIS_ATT_KINDS = ['결석', '지각', '조퇴', '결과']
+
 const newAttDate = ref(new Date().toISOString().split('T')[0])
 const newAttType = ref('교외체험학습(국내)')
 const newAttDays = ref(1)
@@ -89,6 +91,43 @@ const deleteAttendanceLog = async (logId) => {
         </p>
         <p class="text-xs text-pink-500 mt-1">월 1회</p>
       </div>
+    </div>
+
+    <!-- 나이스 성적통지표에서 가져온 출결 누계 (학급관리 › 자료 올리기) -->
+    <div v-if="student.neisAttendance" class="bg-white border border-gray-200 p-4 rounded-lg mb-6 shrink-0">
+      <div class="flex justify-between items-baseline mb-2">
+        <h4 class="font-bold text-gray-700 text-sm">📋 나이스 출결 누계</h4>
+        <span class="text-xs text-gray-400">{{ student.neisAttendance.asOf }} 기준 · {{ student.neisAttendance.source }}</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs text-center border-collapse">
+          <thead>
+            <tr class="text-gray-500">
+              <th class="border border-gray-200 p-1" rowspan="2">수업일수</th>
+              <th v-for="k in NEIS_ATT_KINDS" :key="k" class="border border-gray-200 p-1" colspan="3">{{ k }}</th>
+            </tr>
+            <tr class="text-gray-400">
+              <template v-for="k in NEIS_ATT_KINDS" :key="k + '-sub'">
+                <th class="border border-gray-200 p-1 font-medium">질병</th>
+                <th class="border border-gray-200 p-1 font-medium">미인정</th>
+                <th class="border border-gray-200 p-1 font-medium">기타</th>
+              </template>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="font-bold text-gray-800">
+              <td class="border border-gray-200 p-1">{{ student.neisAttendance.수업일수 }}</td>
+              <template v-for="k in NEIS_ATT_KINDS" :key="k + '-v'">
+                <td v-for="t in ['질병', '미인정', '기타']" :key="t" class="border border-gray-200 p-1"
+                  :class="{ 'text-red-600': t === '미인정' && student.neisAttendance[k]?.[t] > 0 }">
+                  {{ student.neisAttendance[k]?.[t] ?? 0 }}
+                </td>
+              </template>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-if="student.neisAttendance.특기사항" class="text-xs text-gray-500 mt-2">특기사항: {{ student.neisAttendance.특기사항 }}</p>
     </div>
 
     <div class="bg-gray-50 border border-gray-200 p-4 rounded-lg mb-6 shrink-0">

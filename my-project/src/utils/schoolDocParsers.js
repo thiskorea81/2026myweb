@@ -31,6 +31,7 @@ export function detectSheetType(rows) {
   const head = rows.slice(0, 6).map((r) => r.map(cell).join(' ')).join(' ')
   if (head.includes('정기시험 학급별 일람표')) return 'exam'
   if (head.includes('학기말 개인별 일람표')) return 'semester'
+  if (head.replace(/\s/g, '').includes('성적통지표')) return 'reportCard'
   const first = (rows[0] || []).map(cell)
   if (['학년', '반', '번호', '성명'].every((h) => first.includes(h))) return 'roster'
   return null
@@ -196,6 +197,91 @@ export function semesterRecords(s) {
     }
   }
   return { final, perf }
+}
+
+// ───────────────────────── 나이스 성적통지표 (학급담임 › 성적처리 › 성적통지표관리) ─────────────────────────
+
+// 5등급 상대평가 누적 비율 상한 (1등급 10%, 2등급 34%, 3등급 66%, 4등급 90%, 5등급 100%)
+const FIVE_GRADE_CUTS = [10, 34, 66, 90]
+export const fiveGradeOf = (pct) => FIVE_GRADE_CUTS.findIndex((c) => pct <= c) + 1 || 5
+
+/**
+ * 학생별 성적통지표 → { semester, exam, examName, asOf(출력일), students: [{ studentId, number, name, subjects: { 국어: { score, raw, rank, ties, takers, avg, pct, achievement, rankGrade } }, attendance }] }
+ * 석차백분율 = 석차 / 수강자수 × 100 (동석차는 앞 석차 기준). 중간·기말은 석차등급이 없어 5등급제 예상 등급을 계산한다.
+ */
+export function parseReportCardSheet(rows) {
+  const students = []
+  let semester = null
+  let exam = null
+  let student = null
+  let colIdx = {}
+  let section = null
+  let asOf = null
+
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r]
+    const line = row.map(cell).filter(Boolean).join(' ')
+    const printed = line.match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})\.$/)
+    if (printed && !asOf) asOf = `${printed[1]}-${printed[2].padStart(2, '0')}-${printed[3].padStart(2, '0')}`
+    const head = line.match(/(\d)학기\s+\S+\s+(\d)학년\s+(.+?)\s+(\d+)반\s+(\d+)번/)
+    if (head) {
+      semester = Number(head[1])
+      const examText = head[3].replace(/\s+/g, '')
+      exam = examText.includes('중간') ? '중간고사' : examText.includes('기말') ? '기말고사' : '학기말'
+      const name = (rows[r + 1] || []).map(cell).join(' ').match(/성명\s*:\s*(\S+)/)?.[1]
+      student = { studentId: studentIdOf(head[2], head[4], head[5]), number: Number(head[5]), name, subjects: {}, attendance: null }
+      students.push(student)
+      section = null
+      continue
+    }
+    if (!student) continue
+    const c0 = cell(row[0])
+    if (c0 === '과목명') {
+      colIdx = Object.fromEntries(row.map((h, i) => [cell(h).replace(/\s/g, ''), i]).filter(([h]) => h))
+      section = 'subjects'
+      continue
+    }
+    if (c0 === '수업일수') { section = 'attendance'; continue }
+    if (section === 'attendance' && num(row[0]) !== null) {
+      const v = (i) => num(row[i]) ?? 0
+      student.attendance = { 수업일수: v(0), 결석: { 질병: v(1), 미인정: v(2), 기타: v(3) }, 지각: { 질병: v(4), 미인정: v(5), 기타: v(6) }, 조퇴: { 질병: v(7), 미인정: v(8), 기타: v(9) }, 결과: { 질병: v(10), 미인정: v(11), 기타: v(12) }, 특기사항: cell(row[13]) === '-' ? '' : cell(row[13]) }
+      section = null
+      continue
+    }
+    if (section !== 'subjects' || !/\(\d+\)$/.test(c0)) continue
+
+    const label = subjectLabel(c0)
+    const get = (name) => row[colIdx[name]]
+    const rankText = cell(get('석차(동석차수)')).match(/^(\d+)(?:\((\d+)\))?$/)
+    const sub = student.subjects[label] = {
+      score: num(get('합계')) ?? num(get('받은점수')),
+      raw: num(get('원점수')),
+      achievement: cell(get('성취도')) || null,
+      rankGrade: num(get('석차등급')),
+      rank: rankText ? Number(rankText[1]) : null,
+      ties: rankText?.[2] ? Number(rankText[2]) : 1,
+      takers: num(get('수강자수')),
+      avg: num(get('과목평균')),
+    }
+    if (sub.rank && sub.takers) sub.pct = Math.round((sub.rank / sub.takers) * 10000) / 100
+    if (sub.score === null && !sub.achievement) delete student.subjects[label] // 미응시 등
+  }
+  return { semester, exam, examName: `${semester}학기${exam}`, asOf, students }
+}
+
+/** 성적통지표 한 학생 → scores. 중간·기말: "받은점수(석차백분율, 예상 N등급)", 학기말: "원점수(석차백분율, N등급)" */
+export function reportCardScores(student, exam) {
+  const scores = {}
+  for (const [label, s] of Object.entries(student.subjects)) {
+    if (exam === '학기말') {
+      if (s.rankGrade && s.pct !== undefined) scores[label] = `${s.raw}(${s.pct.toFixed(2)}, ${s.rankGrade}등급)`
+      else if (s.raw !== null) scores[label] = `${s.raw}(${s.achievement || '-'})`
+      else if (s.achievement) scores[label] = `${s.score}(${s.achievement})`
+    } else if (s.score !== null) {
+      scores[label] = s.pct !== undefined ? `${s.score}(${s.pct.toFixed(2)}, 예상 ${fiveGradeOf(s.pct)}등급)` : String(s.score)
+    }
+  }
+  return scores
 }
 
 // ───────────────────────── KICE 성적통지표 PDF ─────────────────────────

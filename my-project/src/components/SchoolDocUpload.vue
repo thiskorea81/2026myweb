@@ -24,6 +24,7 @@ const GUIDE = [
   { icon: '🙋', title: '명렬표', where: '나이스 › 학적 › 기본학적관리 › 명렬표 출력 (명렬표 내용 선택 - 모두 선택) › 엑셀 저장', what: '이름·성별·생년월일·주소·학생개인번호 (주민등록번호는 저장하지 않음)' },
   { icon: '📸', title: '학생 사진', where: '나이스 사진일괄입력에 쓰는 파일 그대로: 성명(번호).jpg (예: 홍길동(1).jpg)', what: '선택한 학년·반 학생에게 번호와 이름으로 연결 (자동 압축)' },
   { icon: '📝', title: '정기시험 일람표', where: '나이스 › 학급담임 › 정기시험조회 › 학급별 일람표 › 엑셀 저장', what: '"N학기중간고사/기말고사" 원점수·합계·평균 (학급/학과 평균 포함)' },
+  { icon: '📄', title: '성적통지표', where: '나이스 › 학급담임 › 성적처리 › 성적통지표관리 › 엑셀 저장', what: '과목별 석차·수강자수로 석차백분율(중간·기말은 5등급 예상 등급) + 출결 누계' },
   { icon: '📊', title: '학기말 성적', where: '나이스 › 학급담임 › 성적조회 › 학기말성적조회(개인별 일람표) › 엑셀 저장', what: '"N학기학기말" 원점수(석차등급) + "N학기수행평가" 과목별 합계' },
   { icon: '🎯', title: '모의고사 성적통지표', where: 'KICE 시험업무지원 포털 › 성적통지표 출력 › PDF 저장', what: '"N월모의고사" 원점수(전국백분위, 등급) + 과목별 오답 문항' },
 ]
@@ -129,7 +130,7 @@ async function save() {
   }
 }
 
-const KIND_LABEL = { roster: '🙋 명렬표', photo: '📸 사진', exam: '📝 정기시험', semester: '📊 학기말', kice: '🎯 모의고사' }
+const KIND_LABEL = { roster: '🙋 명렬표', photo: '📸 사진', exam: '📝 정기시험', semester: '📊 학기말', reportCard: '📄 성적통지표', kice: '🎯 모의고사' }
 const countOf = (job, s) => job.rows.filter(r => r.status === s).length
 const expanded = ref({})
 </script>
@@ -140,7 +141,7 @@ const expanded = ref({})
     <h3 class="text-lg font-black text-gray-900 mb-1">📥 나이스·KICE 자료 올리기</h3>
     <p class="text-sm text-gray-500 mb-4">내려받은 파일을 이름 바꾸지 말고 그대로 올리세요. 종류를 자동으로 알아보고, 바뀌는 내용을 먼저 보여 준 뒤 저장합니다.</p>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2 mb-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-2 mb-4">
       <div v-for="g in GUIDE" :key="g.title" class="bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs">
         <p class="font-black text-gray-800 mb-1">{{ g.icon }} {{ g.title }}</p>
         <p class="text-gray-600 mb-1">{{ g.where }}</p>
