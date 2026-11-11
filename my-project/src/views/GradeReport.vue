@@ -57,6 +57,50 @@ const copyMessage = async () => {
   }
 }
 
+// ───────── 인쇄 옵션: 정기고사 / 모의고사 / 정기고사+모의고사 ─────────
+// 정기고사(중간·기말·학기말)와 모의고사를 각각 한 회씩 골라, 학생마다 종류별로 A4 한 쪽씩 인쇄한다.
+const PRINT_MODES = [
+  { value: 'school', label: '정기고사' },
+  { value: 'mock', label: '모의고사' },
+  { value: 'both', label: '정기고사+모의고사' },
+]
+const savedMode = (() => { try { return localStorage.getItem('gradeReportPrintMode') } catch { return null } })()
+const printMode = ref(PRINT_MODES.some(m => m.value === savedMode) ? savedMode : 'school')
+watch(printMode, (v) => { try { localStorage.setItem('gradeReportPrintMode', v) } catch { /* 저장 안 돼도 인쇄는 됨 */ } })
+
+const schoolExams = computed(() => exams.value.filter(e => examKind(e) !== 'mock'))
+const mockExams = computed(() => exams.value.filter(e => examKind(e) === 'mock'))
+const printSchoolExam = ref('')
+const printMockExam = ref('')
+// 기본은 각 종류의 최신 시험. 화면에서 시험을 고르면 그 종류의 인쇄 대상도 따라간다.
+watch(schoolExams, (list) => { if (!list.includes(printSchoolExam.value)) printSchoolExam.value = list[0] || '' }, { immediate: true })
+watch(mockExams, (list) => { if (!list.includes(printMockExam.value)) printMockExam.value = list[0] || '' }, { immediate: true })
+watch(examName, (e) => {
+  if (!e) return
+  if (examKind(e) === 'mock') printMockExam.value = e
+  else printSchoolExam.value = e
+})
+
+const printExamNames = computed(() => [
+  ...(printMode.value !== 'mock' && printSchoolExam.value ? [printSchoolExam.value] : []),
+  ...(printMode.value !== 'school' && printMockExam.value ? [printMockExam.value] : []),
+])
+const recordOf = (s, e) => (s.grades || []).some(g => g.examName === e)
+// 학생별로 인쇄할 쪽. 기록이 없는 시험은 빼되, 정기고사+모의고사(양면)에서는 한쪽만 있어도 두 쪽을 모두 넣어
+// 다음 학생이 뒷면으로 밀리지 않게 한다 (기록 없는 쪽에는 '기록이 없습니다'가 찍힘).
+const pagesFor = (s) => {
+  const have = printExamNames.value.filter(e => recordOf(s, e))
+  const exams = printMode.value === 'both' && have.length ? printExamNames.value : have
+  return exams.map(e => ({ key: `${s.id}-${e}`, student: s, examName: e }))
+}
+const printPages = computed(() => {
+  if (printTarget.value === 'one') return selected.value ? pagesFor(selected.value) : []
+  if (printTarget.value === 'class') return classStudents.value.flatMap(pagesFor)
+  return []
+})
+const classPrintCount = computed(() => classStudents.value.filter(s => pagesFor(s).length).length)
+const selectedPrintCount = computed(() => (selected.value ? pagesFor(selected.value).length : 0))
+
 const print = async (target) => {
   printTarget.value = target
   await nextTick()
@@ -65,8 +109,6 @@ const print = async (target) => {
 const onAfterPrint = () => { printTarget.value = null }
 onMounted(() => window.addEventListener('afterprint', onAfterPrint))
 onUnmounted(() => window.removeEventListener('afterprint', onAfterPrint))
-
-const classWithRecord = computed(() => classStudents.value.filter(hasRecord))
 </script>
 
 <template>
@@ -105,11 +147,38 @@ const classWithRecord = computed(() => classStudents.value.filter(hasRecord))
             </button>
             <p v-if="!filtered.length" class="text-sm text-gray-400 text-center py-4">학생이 없습니다.</p>
           </nav>
-          <button @click="print('class')" :disabled="!classWithRecord.length"
-            class="w-full mt-3 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg hover:bg-black disabled:opacity-40">
-            🖨️ 반 전체 인쇄 ({{ classWithRecord.length }}명)
-          </button>
-          <p class="text-[11px] text-gray-400 mt-1">한 학생당 A4 한 쪽씩 인쇄됩니다.</p>
+          <section class="mt-4 pt-4 border-t border-gray-100">
+            <p class="text-xs font-bold text-gray-500 mb-2">🖨️ 인쇄 옵션</p>
+            <div class="grid grid-cols-3 gap-1 mb-2">
+              <button v-for="m in PRINT_MODES" :key="m.value" @click="printMode = m.value"
+                class="px-1 py-1.5 rounded-lg text-[11px] font-bold border transition-colors"
+                :class="printMode === m.value ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'">
+                {{ m.label }}
+              </button>
+            </div>
+            <label v-if="printMode !== 'mock'" class="block text-[11px] text-gray-500 mb-1">
+              정기고사
+              <select v-model="printSchoolExam" class="w-full border border-gray-300 rounded-lg p-1.5 text-xs font-bold text-gray-800">
+                <option v-if="!schoolExams.length" value="">기록 없음</option>
+                <option v-for="e in schoolExams" :key="e" :value="e">{{ e }}</option>
+              </select>
+            </label>
+            <label v-if="printMode !== 'school'" class="block text-[11px] text-gray-500 mb-1">
+              모의고사
+              <select v-model="printMockExam" class="w-full border border-gray-300 rounded-lg p-1.5 text-xs font-bold text-gray-800">
+                <option v-if="!mockExams.length" value="">기록 없음</option>
+                <option v-for="e in mockExams" :key="e" :value="e">{{ e }}</option>
+              </select>
+            </label>
+            <button @click="print('class')" :disabled="!classPrintCount"
+              class="w-full mt-2 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg hover:bg-black disabled:opacity-40">
+              🖨️ 반 전체 인쇄 ({{ classPrintCount }}명)
+            </button>
+            <p class="text-[11px] text-gray-400 mt-1 leading-relaxed">
+              시험 종류마다 학생당 A4 한 쪽씩 인쇄됩니다.
+              <template v-if="printMode === 'both'">정기고사+모의고사는 양면(긴 쪽 넘김)으로 인쇄하면 앞면 정기고사, 뒷면 모의고사가 됩니다.</template>
+            </p>
+          </section>
         </aside>
 
         <article class="lg:col-span-3 bg-white border border-gray-200 rounded-xl p-6">
@@ -127,7 +196,10 @@ const classWithRecord = computed(() => classStudents.value.filter(hasRecord))
                 <h3 class="font-black text-gray-800">✉️ 개별 안내문 <span class="text-xs font-normal text-gray-400">보내기 전에 고쳐 쓸 수 있습니다</span></h3>
                 <div class="flex gap-2">
                   <button @click="copyMessage" class="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700">📋 안내문 복사</button>
-                  <button @click="print('one')" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-50">🖨️ 이 학생 인쇄</button>
+                  <button @click="print('one')" :disabled="!selectedPrintCount" :title="`인쇄 옵션(${PRINT_MODES.find(m => m.value === printMode).label})대로 인쇄`"
+                    class="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-50 disabled:opacity-40">
+                    🖨️ 이 학생 인쇄 ({{ PRINT_MODES.find(m => m.value === printMode).label }})
+                  </button>
                 </div>
               </div>
               <textarea v-model="message" class="w-full h-72 border border-gray-300 rounded-lg p-3 text-sm font-mono leading-relaxed"></textarea>
@@ -138,14 +210,11 @@ const classWithRecord = computed(() => classStudents.value.filter(hasRecord))
       </div>
     </div>
 
-    <!-- 인쇄 전용 (한 학생 또는 반 전체, 학생당 한 쪽) -->
+    <!-- 인쇄 전용: 인쇄 옵션에 따라 학생마다 정기고사 쪽 / 모의고사 쪽 (각 A4 한 쪽) -->
     <div class="hidden print:block">
-      <template v-if="printTarget === 'one' && selected">
-        <div class="print-page"><GradeReportSheet :student="selected" :exam-name="examName" /></div>
-      </template>
-      <template v-else-if="printTarget === 'class'">
-        <div v-for="s in classWithRecord" :key="s.id" class="print-page"><GradeReportSheet :student="s" :exam-name="examName" /></div>
-      </template>
+      <div v-for="p in printPages" :key="p.key" class="print-page">
+        <GradeReportSheet :student="p.student" :exam-name="p.examName" />
+      </div>
     </div>
   </div>
 </template>
