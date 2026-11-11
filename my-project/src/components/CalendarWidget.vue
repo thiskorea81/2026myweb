@@ -1,14 +1,19 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useDiaryStore } from '../stores/diaryStore'
+import { useScheduleStore } from '../stores/scheduleStore'
+import { fetchMonthlySchoolEvents } from '../services/neisService'
 import { storeToRefs } from 'pinia'
 
 const diaryStore = useDiaryStore()
 const { diaries } = storeToRefs(diaryStore)
+const scheduleStore = useScheduleStore()
+const { scheduleItems } = storeToRefs(scheduleStore)
 
 // 컴포넌트가 화면에 나타날 때 Firebase에서 일정 불러오기
 onMounted(() => {
   diaryStore.fetchDiaries()
+  scheduleStore.fetchSchedule()
 })
 
 const currentDate = ref(new Date())
@@ -20,6 +25,35 @@ const currentMonth = computed(() => currentDate.value.getMonth())
 const prevMonth = () => { currentDate.value = new Date(currentYear.value, currentMonth.value - 1, 1) }
 const nextMonth = () => { currentDate.value = new Date(currentYear.value, currentMonth.value + 1, 1) }
 const goToday = () => { currentDate.value = new Date() }
+
+// 💡 NEIS 학사일정 (보이는 달과 앞뒤 달 - 달력 칸에 걸치는 날짜까지 채우기 위해)
+const schoolEvents = ref({})
+const loadSchoolEvents = async () => {
+  const months = [-1, 0, 1].map(diff => {
+    const d = new Date(currentYear.value, currentMonth.value + diff, 1)
+    return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
+  const results = await Promise.all(months.map(ym => fetchMonthlySchoolEvents(ym).catch(() => ({}))))
+  schoolEvents.value = Object.assign({}, ...results)
+}
+watch([currentYear, currentMonth], loadSchoolEvents, { immediate: true })
+
+// 날짜별 표시 항목: 학사일정·창체 일정(읽기 전용) + 내 일정(삭제 가능)
+const itemsByDate = computed(() => {
+  const map = {}
+  const push = (date, item) => { (map[date] ||= []).push(item) }
+  Object.entries(schoolEvents.value).forEach(([date, events]) => events.forEach((e, i) =>
+    push(date, { key: `neis-${date}-${i}`, kind: e.holiday ? 'holiday' : 'school', text: e.name })))
+  scheduleItems.value.forEach(item => push(item.date, { key: `sch-${item.id}`, kind: 'creative', text: `[${item.type}] ${item.content}` }))
+  diaries.value.forEach(d => push(d.date, { key: `diary-${d.id}`, kind: 'diary', text: d.text, id: d.id }))
+  return map
+})
+const ITEM_CLASS = {
+  holiday: 'bg-red-50 text-red-600',
+  school: 'bg-amber-50 text-amber-800',
+  creative: 'bg-purple-50 text-purple-700',
+  diary: 'bg-blue-100 text-blue-800',
+}
 
 // 날짜를 YYYY-MM-DD 문자열로 변환하는 함수 (비교 및 저장용)
 const formatDate = (dateObj) => {
@@ -91,6 +125,11 @@ const handleDelete = (id) => {
       <div class="flex items-center gap-4">
         <h2 class="text-2xl font-bold text-gray-800">{{ currentYear }}년 {{ currentMonth + 1 }}월</h2>
         <button @click="goToday" class="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200">오늘</button>
+        <div class="hidden md:flex gap-2 text-[11px] font-bold">
+          <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800">학사일정</span>
+          <span class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700">창체</span>
+          <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">내 일정</span>
+        </div>
       </div>
       <div class="flex gap-2">
         <button @click="prevMonth" class="p-2 bg-gray-100 rounded hover:bg-gray-200">◀</button>
@@ -125,10 +164,11 @@ const handleDelete = (id) => {
           </div>
 
           <div class="flex-1 overflow-y-auto space-y-1">
-            <div v-for="diary in diaries.filter(d => d.date === formatDate(day.date))" :key="diary.id"
-                 class="text-xs bg-blue-100 text-blue-800 p-1 rounded flex justify-between items-center group/item"
-                 @click.stop> <span class="truncate pr-1">{{ diary.text }}</span>
-              <button @click="handleDelete(diary.id)" class="text-blue-400 hover:text-red-500 opacity-0 group-hover/item:opacity-100">x</button>
+            <div v-for="item in itemsByDate[formatDate(day.date)] || []" :key="item.key"
+                 class="text-xs p-1 rounded flex justify-between items-center group/item"
+                 :class="ITEM_CLASS[item.kind]" :title="item.text"
+                 @click.stop> <span class="truncate pr-1">{{ item.text }}</span>
+              <button v-if="item.kind === 'diary'" @click="handleDelete(item.id)" class="text-blue-400 hover:text-red-500 opacity-0 group-hover/item:opacity-100">x</button>
             </div>
           </div>
 

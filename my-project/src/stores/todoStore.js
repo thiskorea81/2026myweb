@@ -5,20 +5,26 @@ import { ref } from 'vue'
 import { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, orderBy } from 'firebase/firestore'
 import { db } from '../firebase'
 
-// 'todo'라는 이름의 스토어를 만듭니다.
+// Firestore Timestamp / ISO 문자열 / Date 어느 것이든 Date로
+const toDate = (v) => (v?.toDate ? v.toDate() : v ? new Date(v) : null)
+
 export const useTodoStore = defineStore('todo', () => {
-  // 상태(데이터) 저장소
   const todos = ref([])
   const todosCollection = collection(db, 'todos')
+  let unsubscribe = null
 
-  // 1. 할 일 불러오기
+  // 1. 할 일 불러오기 - 여러 위젯에서 불러도 구독은 하나만 유지
   const fetchTodos = () => {
+    if (unsubscribe) return
     const q = query(todosCollection, orderBy('createdAt', 'desc'))
-    onSnapshot(q, (snapshot) => {
-      todos.value = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }))
+    unsubscribe = onSnapshot(q, (snapshot) => {
+      todos.value = snapshot.docs.map(d => {
+        const data = d.data()
+        return { id: d.id, ...data, createdAt: toDate(data.createdAt), completedAt: toDate(data.completedAt) }
+      })
+    }, (error) => {
+      console.error('할 일 구독 실패:', error)
+      unsubscribe = null
     })
   }
 
@@ -32,10 +38,11 @@ export const useTodoStore = defineStore('todo', () => {
     })
   }
 
-  // 3. 완료 상태 변경하기
+  // 3. 완료 상태 변경하기 (완료한 날을 남겨 '오늘 완료'만 보여줄 수 있게 함)
   const toggleComplete = async (todo) => {
     await updateDoc(doc(db, 'todos', todo.id), {
-      completed: !todo.completed
+      completed: !todo.completed,
+      completedAt: todo.completed ? null : new Date()
     })
   }
 
@@ -44,6 +51,5 @@ export const useTodoStore = defineStore('todo', () => {
     await deleteDoc(doc(db, 'todos', id))
   }
 
-  // 컴포넌트(화면)에서 쓸 수 있도록 내보내기
   return { todos, fetchTodos, addTodo, toggleComplete, deleteTodo }
 })

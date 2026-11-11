@@ -127,6 +127,19 @@ export const useStudentStore = defineStore('student', {
       }
     },
 
+    // 💡 나이스·KICE 자료 올리기(SchoolDocUpload)에서 미리보기로 확인한 변경분을 한 번에 저장
+    // patches: [{ id: 학생 문서 ID, data: { ...바꿀 필드 } }] (grades는 합친 전체 배열로 넘어온다)
+    async saveImportPatches(patches) {
+      for (let i = 0; i < patches.length; i += 400) {
+        const batch = writeBatch(db)
+        patches.slice(i, i + 400).forEach(({ id, data }) => {
+          batch.set(doc(db, 'students', String(id)), data, { merge: true })
+        })
+        await batch.commit()
+      }
+      await this.fetchStudents()
+    },
+
     // 💡 개별 성적 기록 삭제 기능
     async deleteGrade(studentId, gradeId) {
       try {

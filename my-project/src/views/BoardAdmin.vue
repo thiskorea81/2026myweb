@@ -64,7 +64,7 @@ onMounted(fetchBoards)
 
 const formatTitle = (id) => {
   const { grade, cls, dateStr, timeStr, isCommon } = parseBoardId(id)
-  const type = (timeStr === '0730' || timeStr === '0800') ? '🌅 아침 조회' : ((timeStr === '1220' || timeStr === '1500' || timeStr === '1600') ? '🌇 오후 종례' : '')
+  const type = (timeStr === '0730' || timeStr === '0800') ? '🌅 아침 조회' : (['1220', '1400', '1500', '1600'].includes(timeStr) ? '🌇 오후 종례' : '')
   
   let prefix = ''
   if (isCommon) prefix = '[전체 공통] '

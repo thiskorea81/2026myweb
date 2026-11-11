@@ -12,7 +12,7 @@ import { getOrderedScores } from '../utils/gradeUtils'
 // 💡 하위 컴포넌트 임포트 (활동 등록 컴포넌트 포함)
 import StudentBulkUpload from '../components/StudentBulkUpload.vue'
 import GradeBulkUpload from '../components/GradeBulkUpload.vue'
-import PhotoBulkUpload from '../components/PhotoBulkUpload.vue'
+import SchoolDocUpload from '../components/SchoolDocUpload.vue'
 import ActivityBulkUpload from '../components/ActivityBulkUpload.vue'
 import StudentListTable from '../components/StudentListTable.vue'
 import StudentDetailModal from '../components/StudentDetailModal.vue'
@@ -260,7 +260,7 @@ const handleBulkPrint = async () => {
 // 💡 업로드 영역 토글 상태 (활동 등록 추가)
 const showUploadArea = ref(false)
 const showGradeUploadArea = ref(false)
-const showPhotoUploadArea = ref(false)
+const showDocUploadArea = ref(false)
 const showActivityUploadArea = ref(false)
 
 const isModalOpen = ref(false)
@@ -298,31 +298,31 @@ const closeModal = () => { isModalOpen.value = false; selectedStudent.value = nu
         </div>
 
         <div class="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-          <button 
-            @click="showPhotoUploadArea = !showPhotoUploadArea" 
-            class="text-xs md:text-sm px-3 py-2 bg-gray-300 text-gray-900 border border-gray-400 rounded-lg font-bold whitespace-nowrap hover:bg-gray-400 transition-colors"
+          <button
+            @click="showDocUploadArea = !showDocUploadArea"
+            class="text-xs md:text-sm px-4 py-2 bg-indigo-600 text-white border border-indigo-700 rounded-lg font-bold whitespace-nowrap hover:bg-indigo-700 transition-colors shadow-sm"
           >
-            📸 사진 등록
+            📥 자료 올리기 (나이스·KICE)
           </button>
-          <button 
-            @click="showGradeUploadArea = !showGradeUploadArea" 
-            class="text-xs md:text-sm px-3 py-2 bg-gray-300 text-gray-900 border border-gray-400 rounded-lg font-bold whitespace-nowrap hover:bg-gray-400 transition-colors"
-          >
-            💯 성적 등록
-          </button>
-          
-          <button 
-            @click="showActivityUploadArea = !showActivityUploadArea" 
+          <button
+            @click="showActivityUploadArea = !showActivityUploadArea"
             class="text-xs md:text-sm px-3 py-2 bg-teal-100 text-teal-900 border border-teal-300 rounded-lg font-bold whitespace-nowrap hover:bg-teal-200 transition-colors"
           >
             🎯 활동 등록
           </button>
-
-          <button 
-            @click="showUploadArea = !showUploadArea" 
-            class="text-xs md:text-sm px-4 py-2 bg-gray-300 text-gray-900 border border-gray-400 rounded-lg font-bold whitespace-nowrap hover:bg-gray-400 transition-colors"
+          <button
+            @click="showUploadArea = !showUploadArea"
+            title="학생 기초조사(연락처·진로·취미 등)를 엑셀에서 붙여넣기"
+            class="text-xs md:text-sm px-3 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg font-bold whitespace-nowrap hover:bg-gray-200 transition-colors"
           >
-            🙋‍♂️ 학생 등록
+            🙋‍♂️ 기초조사 붙여넣기
+          </button>
+          <button
+            @click="showGradeUploadArea = !showGradeUploadArea"
+            title="나이스·KICE 원본이 없는 성적(진단평가, 입학석차 등)을 직접 붙여넣기"
+            class="text-xs md:text-sm px-3 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg font-bold whitespace-nowrap hover:bg-gray-200 transition-colors"
+          >
+            💯 기타 성적 붙여넣기
           </button>
         </div>
       </div>
@@ -348,9 +348,9 @@ const closeModal = () => { isModalOpen.value = false; selectedStudent.value = nu
         <button @click="selectedIds = []" class="text-xs font-bold text-gray-500 hover:underline whitespace-nowrap">선택 해제</button>
       </div>
 
-      <PhotoBulkUpload v-if="showPhotoUploadArea" />
+      <SchoolDocUpload v-if="showDocUploadArea" :grade="myGrade" :cls="myClass" @close="showDocUploadArea = false" />
       <GradeBulkUpload v-if="showGradeUploadArea" />
-      <StudentBulkUpload v-if="showUploadArea" />
+      <StudentBulkUpload v-if="showUploadArea" @close="showUploadArea = false" />
       <ActivityBulkUpload v-if="showActivityUploadArea" @close="showActivityUploadArea = false" />
       
       <StudentListTable :students="filteredStudents" v-model="selectedIds" @open-modal="openModal" />

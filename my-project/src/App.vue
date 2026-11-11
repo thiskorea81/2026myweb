@@ -4,7 +4,6 @@ import { useRouter, useRoute } from 'vue-router'
 import { signOut } from 'firebase/auth'
 import { auth } from './firebase'
 import AiAssistant from './components/AiAssistant.vue' // 💡 AI 비서 컴포넌트 불러오기
-import { startAutoBoardTimer, stopAutoBoardTimer } from './services/autoBoardService' // 💡 프론트엔드 자동 조종례 스케줄러
 
 const router = useRouter()
 const route = useRoute()
@@ -18,12 +17,7 @@ watch(() => route.path, () => {
   isLoggedIn.value = localStorage.getItem('isLoggedIn') === 'true'
   isMobileMenuOpen.value = false // 페이지 이동 시 모바일 메뉴 자동 닫힘
   openGroup.value = null // 페이지 이동 시 드롭다운 자동 닫힘
-  resetTimer()
-  if (isLoggedIn.value) {
-    startAutoBoardTimer()
-  } else {
-    stopAutoBoardTimer()
-  }
+  resetTimer()
 })
 
 const handleLogout = () => {
@@ -31,7 +25,6 @@ const handleLogout = () => {
     signOut(auth)
     localStorage.removeItem('isLoggedIn')
     isLoggedIn.value = false
-    stopAutoBoardTimer()
     router.push('/login')
   }
 }
@@ -48,7 +41,6 @@ const handleAutoLogout = () => {
   signOut(auth)
   localStorage.removeItem('isLoggedIn')
   isLoggedIn.value = false
-  stopAutoBoardTimer()
   alert('보안을 위해 30분 동안 활동이 없어 자동으로 로그아웃되었습니다. 다시 로그인해 주세요.')
   router.push('/login')
 }
@@ -67,10 +59,7 @@ onMounted(() => {
   window.addEventListener('scroll', resetTimer)
   document.addEventListener('click', handleDocumentClick)
 
-  resetTimer()
-  if (isLoggedIn.value) {
-    startAutoBoardTimer()
-  }
+  resetTimer()
 })
 
 onUnmounted(() => {
@@ -80,7 +69,6 @@ onUnmounted(() => {
   window.removeEventListener('scroll', resetTimer)
   document.removeEventListener('click', handleDocumentClick)
   if (inactivityTimer) clearTimeout(inactivityTimer)
-  stopAutoBoardTimer()
 })
 // -----------------------------------------
 

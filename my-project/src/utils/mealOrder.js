@@ -109,3 +109,37 @@ export function getNextWeekMealNote(fridayDateStr, classNum) {
   if (!info) return null
   return `🍱 [다음 주 급식 순서 예고] 우리 반은 ${info.orderNum}번째로 이동, 12:30 기준 ${info.time} 출발 예정입니다.${info.specialNote}`
 }
+
+// 급식(등교) 자체가 없는 날 - 첫 화면 급식 안내용 (sch-meal 저장소의 mealOrder.js와 같은 목록)
+const NO_MEAL_DATES = new Set([
+  '2026-09-24', '2026-09-25', // 추석 연휴
+  '2026-10-05', // 개천절 대체공휴일
+  '2026-10-09', // 한글날
+  '2026-10-16', // 중간고사 마지막날
+  '2026-11-18', '2026-11-19', // 대학수학능력시험 전날/당일
+  '2026-12-11', // 기말고사 마지막날
+  '2026-12-25', // 성탄절
+  '2026-12-30', // 겨울방학식
+  '2026-12-31', '2027-01-01', // 겨울방학 기간(원본 표에는 순서가 남아있으나 실제로는 등교하지 않음)
+  '2027-02-03', // 졸업식
+  '2027-02-05', // 종업식
+])
+
+// 특정 날짜 하루, 1~9반 전체의 이동 순서/출발 시각표 (급식이 없는 날이면 null)
+// rows는 출발 순서(orderNum) 오름차순
+export function getDayMealSchedule(dateStr) {
+  if (NO_MEAL_DATES.has(dateStr)) return null
+  const week = findWeek(dateStr)
+  if (!week) return null
+
+  const special = SPECIAL_START_DAYS[dateStr] || null
+  const baseStart = special ? special.time : '12:30'
+  const rows = []
+  for (let classNum = 1; classNum <= 9; classNum++) {
+    const orderNum = ((classNum - week.startClass + 9) % 9) + 1
+    rows.push({ classNum, orderNum, time: addMinutes(baseStart, (orderNum - 1) * 2) })
+  }
+  rows.sort((a, b) => a.orderNum - b.orderNum)
+  const note = special ? `📌 ${special.note} - ${special.time} 기준으로 전체 출발 시각이 당겨졌습니다.` : null
+  return { rows, note }
+}

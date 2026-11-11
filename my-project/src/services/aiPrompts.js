@@ -92,50 +92,8 @@ export const getRevisionPrompt = (prevDraft, requestText) => {
   `;
 };
 
-/**
- * 🌅 학급 게시판(조종례) 요약 프롬프트
- * @param {boolean} isMorningMode - 오전/오후 모드 구분
- * @param {string} logTexts - 필터링된 업무 로그 텍스트
- */
-export const getBoardPrompt = (isMorningMode, logTexts) => {
-    return `
-      학급 담임 교사로서 ${isMorningMode ? '아침 조회' : '오후 종례'} 공지를 작성합니다.
-      학생들이 화면을 보고 3초 만에 이해할 수 있도록 아주 간결하고 직관적으로 요약하세요.
-  
-      [출력 규칙 - 절대 엄수]
-    1. 반드시 단일 JSON 객체 { "announcement": "...", "closing": "..." }로만 응답하세요.
-    2. 응답을 대괄호 [ ] 로 감싸거나 리스트(Array) 구조로 만들지 마세요.
-    3. announcement 필드 안에 모든 공지 내용을 번호를 매겨 하나의 문자열로 작성하세요.
-  
-      [작성 조건]
-      1. 핵심 행동(Action) 위주로 짧은 문장(명사형 종결 등)으로 작성하세요.
-      2. '[고정]' 태그가 있는 항목은 최상단에 배치하고 알맞은 이모지를 추가하세요.
-      3. 'announcement' 필드 하나에 모든 공지사항을 번호(1. 2. 3.)를 매겨서 작성하고, 각 항목 사이에는 실제 줄바꿈(Enter)을 적용하여 구분하세요. ('\\n' 이라는 문자를 텍스트로 그대로 출력하지 마세요.)
-  
-      [메모 내용]
-      ${logTexts}
-    `;
-  };
-
-/**
- * 👨‍🏫 담임 교사용 조종례 요약 프롬프트 (수정됨)
- */
-export const getTeacherBoardPrompt = (isMorningMode, logTexts) => {
-    return `
-      당신은 담임 선생님을 돕는 유능한 AI 비서입니다.
-      제공된 메모들을 바탕으로, 담임 선생님이 ${isMorningMode ? '아침 조회' : '오후 종례'} 시간에 학급 상황을 한눈에 파악하고 학생들에게 정확히 전달할 수 있도록 내용을 깔끔하게 정리해 주세요.
-  
-      [출력 규칙 - 절대 엄수]
-      1. 반드시 단일 JSON 객체 { "announcement": "...", "closing": "..." }로만 응답하세요.
-      2. 응답을 대괄호 [ ] 로 감싸거나 리스트(Array) 구조로 만들지 마세요.
-      3. 담임 선생님이 읽고 바로 학생들에게 안내하거나 지도할 수 있도록, 정중하고 전문적인 문체(~습니다, ~바랍니다)로 요약하세요.
-      4. 항목별로 번호(1. 2. 3.)를 매기고, 각 항목 사이에는 실제 줄바꿈(Enter)을 적용하여 가독성을 극대화하세요. ('\\n' 이라는 문자를 텍스트로 그대로 출력하지 마세요.)
-      5. 링크가 있으면 링크를 무조건 넣어주세요. 
-  
-      [메모 내용]
-      ${logTexts}
-    `;
-  };
+// 🌅 조종례 게시판 요약 프롬프트(학생용/담임용)는 Cloud Functions와 함께 쓰도록 functions/boardShared.mjs 에 있다
+export { getBoardPrompt, getTeacherBoardPrompt } from '../../functions/boardShared.mjs'
 
 /**
  * 🏀 동아리 생기부 초안 생성 프롬프트

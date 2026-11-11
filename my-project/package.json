@@ -12,6 +12,7 @@
     "@google/genai": "^1.44.0",
     "@tailwindcss/vite": "^4.2.1",
     "firebase": "^12.10.0",
+    "pdfjs-dist": "^4.10.38",
     "pinia": "^3.0.4",
     "tailwindcss": "^4.2.1",
     "vue": "^3.5.29",

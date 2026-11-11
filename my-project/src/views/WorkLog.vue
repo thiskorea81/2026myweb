@@ -3,9 +3,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useWorkStore } from '../stores/workStore'
 import { storeToRefs } from 'pinia'
 import AiTagGenerator from '../components/AiTagGenerator.vue'
+import { touchesBoard } from '../services/boardSync'
+import { getLogExpiry } from '../../functions/boardShared.mjs'
 
 const workStore = useWorkStore()
-const { logs, allUniqueTags } = storeToRefs(workStore)
+const { logs, allUniqueTags, boardSyncStatus } = storeToRefs(workStore)
 
 onMounted(() => {
   workStore.fetchLogs()
@@ -51,6 +53,17 @@ const extractTags = (text) => {
 }
 
 const currentTags = computed(() => extractTags(logContent.value))
+
+// 조종례 게시판에 실리는 일지면 게시 마지막 날을 보여준다 (#고정/#중요는 계속 게시)
+const boardUntil = (log) => {
+  if (!touchesBoard(log.tags)) return null
+  const expiry = getLogExpiry(log)
+  if (expiry === null) return '계속 게시'
+  const [, m, d] = expiry.split('-')
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  return expiry < todayStr ? '게시 종료' : `${Number(m)}/${Number(d)}까지 게시`
+}
 
 const handleAiTagsGenerated = (tags) => {
   if (!tags || tags.length === 0) return
@@ -212,6 +225,10 @@ const formatContentWithLinks = (text) => {
             </span>
           </div>
 
+          <p v-if="touchesBoard(currentTags)" class="mb-3 text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded p-2 leading-relaxed">
+            📢 저장하면 조종례 게시판에 바로 반영됩니다. 본문에 날짜(예: 11월 13일, 11/13)가 있으면 그날까지, 없으면 하루만 게시됩니다.
+          </p>
+
           <div class="flex gap-2 justify-end">
             <button v-if="isEditMode" @click="cancelEdit" class="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded hover:bg-gray-300 transition-colors text-sm">
               취소
@@ -220,6 +237,16 @@ const formatContentWithLinks = (text) => {
               {{ isEditMode ? '수정 내용 저장' : '일지 저장' }}
             </button>
           </div>
+
+          <p v-if="boardSyncStatus" class="mt-3 text-xs font-bold" :class="{
+            'text-gray-500': boardSyncStatus === 'syncing',
+            'text-green-600': boardSyncStatus === 'done',
+            'text-red-600': boardSyncStatus === 'error',
+          }">
+            <template v-if="boardSyncStatus === 'syncing'">⏳ 조종례 게시판에 반영하는 중...</template>
+            <template v-else-if="boardSyncStatus === 'done'">✅ 조종례 게시판에 반영했습니다.</template>
+            <template v-else>⚠️ 조종례 게시판 반영에 실패했습니다. 조종례 화면의 '다시 생성'을 눌러 주세요.</template>
+          </p>
         </div>
       </div>
 
@@ -284,7 +311,10 @@ const formatContentWithLinks = (text) => {
             :class="{ 'border-green-400 bg-green-50': editingId === log.id }"
           >
             <div class="flex justify-between items-start mb-2">
-              <span class="text-xs text-gray-400 font-medium">{{ formatDate(log.createdAt) }} <span v-if="log.updatedAt" class="ml-1 italic">(수정됨)</span></span>
+              <span class="text-xs text-gray-400 font-medium">
+                {{ formatDate(log.createdAt) }} <span v-if="log.updatedAt" class="ml-1 italic">(수정됨)</span>
+                <span v-if="boardUntil(log)" class="ml-2 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 not-italic">📢 {{ boardUntil(log) }}</span>
+              </span>
               
               <div class="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button @click="editLog(log)" class="text-xs font-bold text-green-600 hover:text-green-800 bg-green-100 px-2 py-1 rounded">수정</button>

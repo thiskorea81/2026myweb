@@ -11,10 +11,17 @@ export const useScheduleStore = defineStore('schedule', () => {
   const scheduleCollection = collection(db, 'creativeActivitySchedule')
 
   // 일정 목록 실시간 구독 (날짜순 정렬)
+  let unsubscribe = null
+
+  // 여러 화면에서 불러도 구독은 하나만 유지
   const fetchSchedule = () => {
+    if (unsubscribe) return
     const q = query(scheduleCollection, orderBy('date', 'asc'))
-    onSnapshot(q, (snapshot) => {
+    unsubscribe = onSnapshot(q, (snapshot) => {
       scheduleItems.value = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+    }, (error) => {
+      console.error('구독 실패:', error)
+      unsubscribe = null
     })
   }
 

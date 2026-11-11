@@ -84,9 +84,17 @@ All persistent data lives in one Firestore database, reached two ways:
 
 Exam score data is pasted in from Excel/Google Forms in inconsistent column-naming formats across different exams (e.g. `한국사` vs `한국사1` vs `한국사(백분율)`). `src/utils/gradeUtils.js` centralizes the alias table (`orderedSubjects`, `summaryItems`) that normalizes and orders any incoming score object into a consistent display order, and strips personal-info-like keys (`성명`, `이름`) that sometimes leak into pasted score data. Any new code that renders or exports grades should go through `getOrderedScores()` rather than iterating `Object.entries(scores)` directly, or subject order/labels will be inconsistent across exams.
 
-### Scheduled server-side AI (Cloud Functions)
+### Importing NEIS / KICE source files
 
-`functions/index.js` runs two scheduled functions (`generateMorningBoard` at 18:00 KST for next-day, `generateAfternoonBoard` at 15:00 KST) that auto-generate the class announcement board from tagged `workLogs` entries, calling Gemini server-side with the `firebase-admin` SDK. This duplicates some prompt logic from `aiPrompts.js`/`aiService.js` (the functions runtime can't import the Vite frontend's ES modules) — if you change the shared announcement prompt/format, update both `src/services/aiPrompts.js` (`getBoardPrompt`) and `functions/index.js` (`getBoardPrompt`) to keep them in sync. Class grouping/log matching here works by scanning log text for student names, not IDs, and has explicit handling for duplicate names within a class (`(동명이인)` tagging).
+Homeroom's "📥 자료 올리기" (`SchoolDocUpload.vue`) takes the files teachers actually download, unchanged: NEIS 명렬표 xlsx, 사진 named `성명(번호).jpg`, 정기시험 학급별 일람표 xlsx, 학기말 개인별 일람표 xlsx, and the KICE 성적통지표 PDF (read with `pdfjs-dist` by glyph x/y position). Parsing lives in `src/utils/schoolDocParsers.js` and the preview/merge session in `src/utils/schoolDocImport.js` — both pure, so they can be exercised from a Node script against real files. `mergeScores` keeps richer existing values (e.g. 석차백분율 added from another source) when the 원점수 matches, and re-uploading the same file is a no-op. Never persist 주민등록번호 from the 명렬표.
+
+### 조종례 boards (workLogs → boardSummaries / teacherBoardSummaries)
+
+All board rules live in **one file, `functions/boardShared.mjs`** (pure ESM, no Firestore/Gemini access): the current/next slot (weekday morning `0800`; afternoon `1400` on Wednesday, `1500` otherwise; weekends show Friday afternoon), how long a tagged log stays posted (until the latest date written in its text, else one school day; `#고정`/`#중요` forever), class grouping by student-name mention with `(동명이인)` tagging, the student/teacher prompts (`aiPrompts.js` just re-exports them), and `syncBoards()`, which writes per-class docs `{grade}_{class}_{date}_{epochKey}` and skips any doc whose `sourceHash` is unchanged (so manual edits survive until the underlying logs change). The frontend imports it directly (`src/services/boardSync.js`), and `functions/index.js` (CommonJS) loads it via dynamic `import()` — it sits under `functions/` because only that folder is deployed. Don't re-duplicate this logic in views.
+
+- **Instant path:** `workStore` add/update/delete calls `syncBoardsNow()` when the old or new tags include `#조회`/`#종례`/`#조종례`. `StudentBoard.vue`/`TeacherBoard.vue` only `onSnapshot` their slot doc (and run a sync on open when logged in).
+- **Safety net:** the scheduled Cloud Functions (07:00 weekdays, 14:00 Wed, 15:00 Mon/Tue/Thu/Fri KST) call the same `syncBoards()` so new slots and expired logs roll over even if nobody opens the app. Deploy with `firebase deploy --only functions`.
+- `functions/mealOrder.js` is still a CommonJS copy of `src/utils/mealOrder.js` — keep both in sync.
 
 ### Routing
 

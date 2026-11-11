@@ -8,13 +8,20 @@ export const useDiaryStore = defineStore('diary', () => {
   const diariesCollection = collection(db, 'diaries')
 
   // 1. 다이어리 데이터 실시간 불러오기
+  let unsubscribe = null
+
+  // 여러 화면에서 불러도 구독은 하나만 유지
   const fetchDiaries = () => {
+    if (unsubscribe) return
     const q = query(diariesCollection, orderBy('createdAt', 'asc'))
-    onSnapshot(q, (snapshot) => {
+    unsubscribe = onSnapshot(q, (snapshot) => {
       diaries.value = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }))
+    }, (error) => {
+      console.error('구독 실패:', error)
+      unsubscribe = null
     })
   }
 

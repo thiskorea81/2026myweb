@@ -1,21 +1,18 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import { aiService } from '../services/aiService'
-import { announcementSchema, getBoardPrompt } from '../services/aiPrompts'
-import { useStudentStore } from '../stores/studentStore'
-import { getThisWeekMealNote, getNextWeekMealNote } from '../utils/mealOrder'
+import { syncBoardsNow, getCurrentSlot } from '../services/boardSync'
 
 // 💡 분리된 컴포넌트 불러오기
 import BoardHistoryModal from '../components/board/BoardHistoryModal.vue'
 import BoardDisplay from '../components/board/BoardDisplay.vue'
 
-const studentStore = useStudentStore()
-
+// 게시판 내용은 업무일지(#조회/#종례/#조종례)를 저장할 때 services/boardSync.js 가 만들어 두고,
+// 이 화면은 해당 문서를 실시간 구독만 한다 (열어 둔 교실 TV에도 새 메모가 바로 뜬다).
 const aiAnnouncement = ref('')
 const isLoading = ref(true)
-const isRegenerating = ref(false) 
+const isRegenerating = ref(false)
 
 const isEditing = ref(false)
 const editableContent = ref('')
@@ -31,201 +28,50 @@ const viewClass = ref(localStorage.getItem('myClass') || '1')
 const grades = [1, 2, 3]
 const classes = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
-const isMorningMode = ref(true)
+const slot = ref(getCurrentSlot())
+const isMorningMode = computed(() => slot.value.morning)
 const boardTitle = computed(() => `${viewGrade.value}학년 ${viewClass.value}반 ${isMorningMode.value ? '아침 조회' : '오후 종례'}`)
 const boardSubtitle = computed(() => isMorningMode.value ? '오늘의 핵심 공지사항입니다.' : '하교 전 꼭 확인하세요.')
 
-const getBoardInfo = () => {
-  const realNow = new Date()
-  const currentHour = realNow.getHours()
-  const currentMinute = realNow.getMinutes()
-  const timeInt = currentHour * 100 + currentMinute 
-  const currentDay = realNow.getDay() // 0=Sun, 1=Mon, ..., 6=Sat
+const summaryRef = () => doc(db, 'boardSummaries', `${viewGrade.value}_${viewClass.value}_${slot.value.key}`)
 
-  let targetDbDate = new Date(realNow)
-  let epochKey = '' 
-  let morningMode = true
-
-  // 종례 시간: 수요일(3)은 14:00, 나머지는 15:00
-  const afternoonTime = (currentDay === 3) ? 1400 : 1500
-
-  if (timeInt >= afternoonTime) {
-    epochKey = (currentDay === 3) ? '1400' : '1500'
-    morningMode = false
-  } else if (timeInt >= 800) { 
-    epochKey = '0800'
-    morningMode = true
-  } else {
-    targetDbDate.setDate(targetDbDate.getDate() - 1)
-    const prevDay = targetDbDate.getDay()
-    epochKey = (prevDay === 3) ? '1400' : '1500'
-    morningMode = false 
-  }
-
-  const dateString = `${targetDbDate.getFullYear()}-${String(targetDbDate.getMonth()+1).padStart(2,'0')}-${String(targetDbDate.getDate()).padStart(2,'0')}`
-  const documentId = `${viewGrade.value}_${viewClass.value}_${dateString}_${epochKey}`
-
-  let logTargetDate = new Date(targetDbDate)
-  if (epochKey === '0800') logTargetDate.setDate(logTargetDate.getDate() - 1)
-
-  return { documentId, logTargetDate, morningMode, dateString, dayOfWeek: targetDbDate.getDay() }
-}
-
-const loadBoardContent = async (forceRegenerate = false) => {
-  if (forceRegenerate) isRegenerating.value = true
-  else isLoading.value = true
-
-  try {
-    const info = getBoardInfo()
-    isMorningMode.value = info.morningMode
-    const summaryRef = doc(db, 'boardSummaries', info.documentId)
-    
-    const commonDocId = `COMMON_${info.documentId.split('_').slice(-2).join('_')}`
-    const commonSummaryRef = doc(db, 'boardSummaries', commonDocId)
-
-    const summarySnap = await getDoc(summaryRef)
-    if (summarySnap.exists()) {
-      boardHistory.value = summarySnap.data().history || []
-      if (!forceRegenerate) {
-        aiAnnouncement.value = summarySnap.data().content
-        isLoading.value = false
-        return
-      }
+let unsubscribe = null
+const subscribe = () => {
+  if (unsubscribe) unsubscribe()
+  isLoading.value = true
+  unsubscribe = onSnapshot(summaryRef(), (snap) => {
+    if (snap.exists()) {
+      boardHistory.value = snap.data().history || []
+      if (!isEditing.value) aiAnnouncement.value = snap.data().content
     } else {
       boardHistory.value = []
-      if (!forceRegenerate && !isLoggedIn.value) {
-        aiAnnouncement.value = isMorningMode.value ? "아직 오늘 아침 공지사항이 없습니다.\n오늘 하루도 화이팅! ☀️" : "아직 오후 공지사항이 없습니다.\n안전하게 하교하세요! 👋"
-        isLoading.value = false
-        return
-      }
+      aiAnnouncement.value = isMorningMode.value
+        ? "아직 오늘 아침 공지사항이 없습니다.\n오늘 하루도 화이팅! ☀️"
+        : "아직 오후 공지사항이 없습니다.\n안전하게 하교하세요! 👋"
     }
-
-    if (studentStore.students.length === 0) await studentStore.fetchStudents()
-    const allStudents = studentStore.students
-
-    const targetStudents = allStudents.filter(s => String(s.grade) === String(viewGrade.value) && String(s.class) === String(viewClass.value))
-    const nameCounts = {}
-    targetStudents.forEach(s => { nameCounts[s.name] = (nameCounts[s.name] || 0) + 1 })
-    const duplicateNames = Object.keys(nameCounts).filter(name => nameCounts[name] > 1)
-
-    const logYear = info.logTargetDate.getFullYear()
-    const logMonth = info.logTargetDate.getMonth()
-    const logDay = info.logTargetDate.getDate()
-
-    const q = query(collection(db, 'workLogs'), where('tags', 'array-contains-any', ['#조종례', '#조회', '#종례']))
-    const snap = await getDocs(q)
-    
-    const rawLogs = snap.docs
-      .map(d => d.data())
-      .filter(log => {
-        if (!log.tags) return false
-        const isRelevant = info.morningMode 
-          ? (log.tags.includes('#조종례') || log.tags.includes('#조회'))
-          : (log.tags.includes('#조종례') || log.tags.includes('#종례'))
-        if (!isRelevant) return false
-        if (log.tags.includes('#고정') || log.tags.includes('#중요')) return true
-
-        if (!log.createdAt) return false
-        const logDate = new Date(log.createdAt)
-        return logDate.getFullYear() === logYear && logDate.getMonth() === logMonth && logDate.getDate() === logDay
-      })
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-
-    const commonLogs = []
-    const myClassLogs = []
-    
-    rawLogs.forEach(log => {
-      let content = log.content
-      const mentionedAny = allStudents.filter(s => s.name.length >= 2 && content.includes(s.name))
-      
-      if (mentionedAny.length > 0) {
-        const mentionedTarget = targetStudents.filter(s => s.name.length >= 2 && content.includes(s.name))
-        if (mentionedTarget.length > 0) {
-          mentionedTarget.forEach(s => {
-            if (duplicateNames.includes(s.name)) {
-              const regex = new RegExp(`${s.name}(?!\\(동명이인\\))`, 'g')
-              content = content.replace(regex, `${s.name}(동명이인)`)
-            }
-          })
-          myClassLogs.push({ ...log, content })
-        }
-      } else {
-        commonLogs.push(log)
-      }
-    })
-
-    let commonAnnouncementText = ""
-    let commonClosingText = ""
-    const commonSnap = await getDoc(commonSummaryRef)
-
-    if (commonSnap.exists() && !forceRegenerate) {
-       commonAnnouncementText = commonSnap.data().announcement
-       commonClosingText = commonSnap.data().closing
-    } else {
-       if (commonLogs.length > 0) {
-          const logTexts = commonLogs.map(l => `- ${l.tags.includes('#고정') ? '[고정] ' : ''}${l.content}`).join('\n')
-          const prompt = getBoardPrompt(info.morningMode, logTexts) + `\n[⚠️ 필수 응답 형식]\n- 반드시 { "announcement": "...", "closing": "..." } 형태의 단일 JSON 객체로 응답하세요. 대괄호([]) 금지.`
-          const result = await aiService.askStructured(prompt, announcementSchema)
-          commonAnnouncementText = result.announcement
-          commonClosingText = result.closing
-          await setDoc(commonSummaryRef, { announcement: commonAnnouncementText, closing: commonClosingText, updatedAt: new Date().toISOString() }, { merge: true })
-       } else {
-          commonAnnouncementText = "전달할 전체 공지사항이 없습니다."
-          commonClosingText = info.morningMode ? "오늘 하루도 화이팅! ☀️" : "안전하게 하교하세요! 👋"
-       }
-    }
-
-    // 💡 1학년 급식순서 안내: 월요일 조회 때 "이번 주", 금요일 종례 때 "다음 주" 순서를 함께 공지
-    let mealNote = null
-    if (String(viewGrade.value) === '1') {
-      if (info.morningMode && info.dayOfWeek === 1) {
-        mealNote = getThisWeekMealNote(info.dateString, Number(viewClass.value))
-      } else if (!info.morningMode && info.dayOfWeek === 5) {
-        mealNote = getNextWeekMealNote(info.dateString, Number(viewClass.value))
-      }
-    }
-
-    let finalContent = ''
-    if (mealNote) {
-       finalContent += `${mealNote}\n\n`
-    }
-    if (myClassLogs.length > 0) {
-       finalContent += `🏫 [우리 반 알림]\n`
-       myClassLogs.forEach((l, i) => {
-          finalContent += `${i + 1}. ${l.content}\n`
-       })
-       finalContent += `\n`
-    }
-
-    if (commonLogs.length > 0) {
-       finalContent += `📢 [전체 공지]\n${commonAnnouncementText}\n\n`
-    } else if (myClassLogs.length === 0) {
-       finalContent += `📢 [전체 공지]\n전달할 공지사항이 없습니다.\n\n`
-    }
-
-    finalContent += `${commonClosingText}`
-
-    aiAnnouncement.value = finalContent.trim()
-
-    const newEntry = {
-      id: Date.now(),
-      content: finalContent.trim(),
-      type: '🤖 스마트 병합 (공통AI + 우리반)',
-      timestamp: new Date().toISOString()
-    }
-    boardHistory.value.push(newEntry)
-
-    await setDoc(summaryRef, { 
-      content: finalContent.trim(), 
-      history: boardHistory.value,
-      updatedAt: new Date().toISOString() 
-    }, { merge: true }) 
-
-  } catch (error) {
-    console.error("데이터 로드 에러:", error)
-    aiAnnouncement.value = "공지사항을 동기화하는 중 오류가 발생했습니다."
-  } finally {
     isLoading.value = false
+  }, (error) => {
+    console.error("조종례 게시판 구독 에러:", error)
+    aiAnnouncement.value = "공지사항을 불러오는 중 오류가 발생했습니다."
+    isLoading.value = false
+  })
+}
+
+// 로그인한 선생님 화면이면 열 때마다 최신 업무일지로 맞춰 둔다 (바뀐 게 없으면 아무것도 쓰지 않음)
+const syncIfTeacher = () => {
+  if (isLoggedIn.value) syncBoardsNow().catch(e => console.error('조종례 동기화 실패:', e))
+}
+
+// '다시 생성': AI 요약까지 새로 만든다 (직접 수정한 내용도 덮어씀)
+const regenerate = async () => {
+  if (!confirm('업무일지를 바탕으로 조종례를 다시 생성할까요?\n직접 수정한 내용은 새로 만든 내용으로 바뀝니다.')) return
+  isRegenerating.value = true
+  try {
+    await syncBoardsNow({ force: true })
+  } catch (error) {
+    console.error("다시 생성 에러:", error)
+    alert('❌ 다시 생성하는 중 오류가 발생했습니다.')
+  } finally {
     isRegenerating.value = false
   }
 }
@@ -235,26 +81,20 @@ const startEditing = () => {
   isEditing.value = true
 }
 
+// 직접 수정한 내용은 sourceHash를 건드리지 않으므로, 관련 업무일지가 새로 바뀌기 전까지 유지된다
+const saveBoardContent = async (content, type) => {
+  const newEntry = { id: Date.now(), content, type, timestamp: new Date().toISOString() }
+  await setDoc(summaryRef(), {
+    content,
+    history: [...boardHistory.value, newEntry].slice(-30),
+    updatedAt: new Date().toISOString()
+  }, { merge: true })
+  aiAnnouncement.value = content
+}
+
 const saveEditedContent = async () => {
   try {
-    const info = getBoardInfo()
-    const summaryRef = doc(db, 'boardSummaries', info.documentId)
-    
-    const newEntry = {
-      id: Date.now(),
-      content: editableContent.value,
-      type: '✏️ 선생님 직접 수정',
-      timestamp: new Date().toISOString()
-    }
-    boardHistory.value.push(newEntry)
-
-    await setDoc(summaryRef, { 
-      content: editableContent.value, 
-      history: boardHistory.value,
-      updatedAt: new Date().toISOString() 
-    }, { merge: true })
-    
-    aiAnnouncement.value = editableContent.value
+    await saveBoardContent(editableContent.value, '✏️ 선생님 직접 수정')
     isEditing.value = false
     alert('✅ 공지사항이 성공적으로 수정 및 저장되었습니다.')
   } catch (error) {
@@ -265,26 +105,8 @@ const saveEditedContent = async () => {
 
 const restoreHistory = async (hist) => {
   if(!confirm('선택하신 이전 버전으로 공지사항을 되돌리시겠습니까?')) return
-
   try {
-    const info = getBoardInfo()
-    const summaryRef = doc(db, 'boardSummaries', info.documentId)
-    
-    const newEntry = {
-      id: Date.now(),
-      content: hist.content,
-      type: '⏪ 이전 버전으로 복구됨',
-      timestamp: new Date().toISOString()
-    }
-    boardHistory.value.push(newEntry)
-
-    await setDoc(summaryRef, { 
-      content: hist.content, 
-      history: boardHistory.value,
-      updatedAt: new Date().toISOString() 
-    }, { merge: true })
-
-    aiAnnouncement.value = hist.content
+    await saveBoardContent(hist.content, '⏪ 이전 버전으로 복구됨')
     showHistoryModal.value = false
     alert('✅ 이전 버전으로 성공적으로 복구되었습니다.')
   } catch (error) {
@@ -293,7 +115,25 @@ const restoreHistory = async (hist) => {
   }
 }
 
-onMounted(() => { loadBoardContent(false) })
+// 조회 ↔ 종례 시각이 지나면 화면을 다음 회차로 넘긴다
+let slotTimer = null
+onMounted(() => {
+  subscribe()
+  syncIfTeacher()
+  slotTimer = setInterval(() => {
+    const next = getCurrentSlot()
+    if (next.key !== slot.value.key) {
+      slot.value = next
+      subscribe()
+      syncIfTeacher()
+    }
+  }, 60 * 1000)
+})
+
+onUnmounted(() => {
+  if (unsubscribe) unsubscribe()
+  clearInterval(slotTimer)
+})
 </script>
 
 <template>
@@ -323,12 +163,12 @@ onMounted(() => { loadBoardContent(false) })
           ✏️ 직접 수정
         </button>
         <button 
-          @click="loadBoardContent(true)" 
+          @click="regenerate" 
           :disabled="isLoading || isRegenerating"
           class="flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-800 rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-white hover:shadow-md transition-all disabled:opacity-50"
         >
           <span :class="{'animate-spin': isRegenerating}">🔄</span>
-          {{ isRegenerating ? '업데이트 중...' : '메모 불러오기' }}
+          {{ isRegenerating ? '생성 중...' : '다시 생성' }}
         </button>
       </template>
       <template v-else>
@@ -360,7 +200,7 @@ onMounted(() => { loadBoardContent(false) })
             <option v-for="n in classes" :key="n" :value="n">{{ n }}반</option>
           </select>
           
-          <button @click="loadBoardContent(false)" class="bg-gray-800 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-gray-900 transition-colors shadow-sm whitespace-nowrap">
+          <button @click="subscribe" class="bg-gray-800 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-gray-900 transition-colors shadow-sm whitespace-nowrap">
             조회
           </button>
         </div>
