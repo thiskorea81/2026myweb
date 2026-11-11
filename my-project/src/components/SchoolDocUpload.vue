@@ -1,6 +1,5 @@
 <script setup>
 import { ref, computed } from 'vue'
-import * as XLSX from 'xlsx'
 import { useStudentStore } from '../stores/studentStore'
 import { createImportSession, collectPatches } from '../utils/schoolDocImport'
 
@@ -86,6 +85,7 @@ async function handleFiles(fileList) {
       if (/\.pdf$/i.test(file.name)) {
         job = s.addKiceReport(file.name, await readPdfPages(file))
       } else if (/\.(xlsx|xls|csv)$/i.test(file.name)) {
+        const XLSX = await import('xlsx') // 엑셀 라이브러리는 파일을 올릴 때만 불러온다 (첫 화면 용량 절약)
         const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array' })
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' })
         job = s.addSheet(file.name, rows, { updateAddress: updateAddress.value })
