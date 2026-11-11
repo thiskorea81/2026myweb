@@ -58,6 +58,13 @@ const router = createRouter({
       component: () => import('../views/Career.vue'),
       meta: { requiresAuth: true }
     },
+    // 시험별 학생 성적 분석·안내문 (교사용)
+    {
+      path: '/grade-report',
+      name: 'GradeReport',
+      component: () => import('../views/GradeReport.vue'),
+      meta: { requiresAuth: true }
+    },
     {
       path: '/data-export',
       name: 'DataExport',

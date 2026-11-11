@@ -81,6 +81,7 @@ const navGroups = [
     items: [
       { path: '/all-students', icon: '🏫', name: '전체 학생' },
       { path: '/homeroom', icon: '👥', name: '학급관리' },
+      { path: '/grade-report', icon: '📈', name: '성적 안내' },
       { path: '/data-export', icon: '📥', name: '진학상담 자료 다운' },
     ]
   },
